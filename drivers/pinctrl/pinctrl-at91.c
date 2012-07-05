@@ -749,7 +749,7 @@ static int __devinit at91_pinctrl_parse_groups(struct device_node *np,
 	grp->name = np->name;
 
 	/*
-	 * the binding format is fsl,pins = <bank pin mux CONFIG ...>,
+	 * the binding format is atmel,pins = <bank pin mux CONFIG ...>,
 	 * do sanity check and calculate pins number
 	 */
 	list = of_get_property(np, "atmel,pins", &size);
