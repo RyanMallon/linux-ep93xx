@@ -1520,8 +1520,12 @@ struct task_struct {
 	short pref_node_fork;
 #endif
 #ifdef CONFIG_SCHED_NUMA
-	int node;
-#endif
+	int node;			/* task home node   */
+	int node_last;			/* home node filter */
+	u64 node_stamp;			/* migration stamp  */
+	unsigned long numa_contrib;
+#endif /* CONFIG_SCHED_NUMA */
+
 	struct rcu_head rcu;
 
 	/*
@@ -2037,22 +2041,22 @@ extern unsigned int sysctl_sched_nr_migrate;
 extern unsigned int sysctl_sched_time_avg;
 extern unsigned int sysctl_timer_migration;
 extern unsigned int sysctl_sched_shares_window;
+extern unsigned int sysctl_sched_numa_task_period;
 
 int sched_proc_update_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *length,
 		loff_t *ppos);
-#endif
-#ifdef CONFIG_SCHED_DEBUG
+
 static inline unsigned int get_sysctl_timer_migration(void)
 {
 	return sysctl_timer_migration;
 }
-#else
+#else /* CONFIG_SCHED_DEBUG */
 static inline unsigned int get_sysctl_timer_migration(void)
 {
 	return 1;
 }
-#endif
+#endif /* CONFIG_SCHED_DEBUG */
 extern unsigned int sysctl_sched_rt_period;
 extern int sysctl_sched_rt_runtime;
 

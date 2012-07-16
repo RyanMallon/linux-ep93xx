@@ -1533,6 +1533,15 @@ static void __sched_fork(struct task_struct *p)
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	INIT_HLIST_HEAD(&p->preempt_notifiers);
 #endif
+
+#ifdef CONFIG_SCHED_NUMA
+	if (p->mm && atomic_read(&p->mm->mm_users) == 1)
+		p->mm->numa_next_scan = jiffies;
+
+	p->node = -1;
+	p->node_last = -1;
+	p->node_stamp = 0ULL;
+#endif /* CONFIG_NUMA */
 }
 
 /*
@@ -5996,9 +6005,9 @@ static struct sched_domain_topology_level *sched_domain_topology = default_topol
  * Requeues a task ensuring its on the right load-balance list so
  * that it might get migrated to its new home.
  *
- * Note that we cannot actively migrate ourselves since our callers
- * can be from atomic context. We rely on the regular load-balance
- * mechanisms to move us around -- its all preference anyway.
+ * Since home-node is pure preference there's no hard migrate to force
+ * us anywhere, this also allows us to call this from atomic context if
+ * required.
  */
 void sched_setnode(struct task_struct *p, int node)
 {
@@ -6016,6 +6025,7 @@ void sched_setnode(struct task_struct *p, int node)
 		p->sched_class->put_prev_task(rq, p);
 
 	p->node = node;
+	p->node_last = node;
 
 	if (running)
 		p->sched_class->set_curr_task(rq);

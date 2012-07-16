@@ -27,6 +27,8 @@
 #include <linux/profile.h>
 #include <linux/interrupt.h>
 #include <linux/random.h>
+#include <linux/mempolicy.h>
+#include <linux/task_work.h>
 
 #include <trace/events/sched.h>
 
@@ -774,6 +776,149 @@ update_stats_curr_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
 }
 
 /**************************************************
+ * Scheduling class numa methods.
+ *
+ * The purpose of the NUMA bits are to maintain compute (task) and data
+ * (memory) locality. We try and achieve this by making tasks stick to
+ * a particular node (their home node) but if fairness mandates they run
+ * elsewhere for long enough, we let the memory follow them.
+ *
+ * Tasks start out with their home-node unset (-1) this effectively means
+ * they act !NUMA until we've established the task is busy enough to bother
+ * with placement.
+ */
+
+static unsigned long task_h_load(struct task_struct *p);
+
+#ifdef CONFIG_SCHED_NUMA
+static void account_offnode_enqueue(struct rq *rq, struct task_struct *p)
+{
+	p->numa_contrib = task_h_load(p);
+	rq->offnode_weight += p->numa_contrib;
+	rq->offnode_running++;
+}
+static void account_offnode_dequeue(struct rq *rq, struct task_struct *p)
+{
+	rq->offnode_weight -= p->numa_contrib;
+	rq->offnode_running--;
+}
+
+/*
+ * numa task sample period in ms: 2.5s
+ */
+unsigned int sysctl_sched_numa_task_period = 2500;
+
+/*
+ * The expensive part of numa migration is done from task_work context.
+ * Triggered from task_tick_numa().
+ */
+void task_numa_work(struct callback_head *work)
+{
+	unsigned long migrate, next_scan, now = jiffies;
+	struct task_struct *t, *p = current;
+	int node = p->node_last;
+
+	WARN_ON_ONCE(p != container_of(work, struct task_struct, rcu));
+
+	/*
+	 * Who cares about NUMA placement when they're dying.
+	 *
+	 * NOTE: make sure not to dereference p->mm before this check,
+	 * exit_task_work() happens _after_ exit_mm() so we could be called
+	 * without p->mm even though we still had it when we enqueued this
+	 * work.
+	 */
+	if (p->flags & PF_EXITING)
+		return;
+
+	/*
+	 * Enforce maximal migration frequency..
+	 */
+	migrate = p->mm->numa_next_scan;
+	if (time_before(now, migrate))
+		return;
+
+	next_scan = now + 2*msecs_to_jiffies(sysctl_sched_numa_task_period);
+	if (cmpxchg(&p->mm->numa_next_scan, migrate, next_scan) != migrate)
+		return;
+
+	rcu_read_lock();
+	t = p;
+	do {
+		sched_setnode(t, node);
+	} while ((t = next_thread(t)) != p);
+	rcu_read_unlock();
+
+	lazy_migrate_process(p->mm);
+}
+
+/*
+ * Sample task location from hardirq context (tick), this has minimal bias with
+ * obvious exceptions of frequency interference and tick avoidance techniques.
+ * If this were to become a problem we could move this sampling into the
+ * sleep/wakeup path -- but we'd prefer to avoid that for obvious reasons.
+ */
+void task_tick_numa(struct rq *rq, struct task_struct *curr)
+{
+	u64 period, now;
+	int node;
+
+	/*
+	 * We don't care about NUMA placement if we don't have memory.
+	 */
+	if (!curr->mm)
+		return;
+
+	/*
+	 * Sample our node location every @sysctl_sched_numa_task_period
+	 * runtime ms. We use a two stage selection in order to filter
+	 * unlikely locations.
+	 *
+	 * If P(n) is the probability we're on node 'n', then the probability
+	 * we sample the same node twice is P(n)^2. This quadric squishes small
+	 * values and makes it more likely we end up on nodes where we have
+	 * significant presence.
+	 *
+	 * Using runtime rather than walltime has the dual advantage that
+	 * we (mostly) drive the selection from busy threads and that the
+	 * task needs to have done some actual work before we bother with
+	 * NUMA placement.
+	 */
+	now = curr->se.sum_exec_runtime;
+	period = (u64)sysctl_sched_numa_task_period * NSEC_PER_MSEC;
+
+	if (now - curr->node_stamp > period) {
+		curr->node_stamp = now;
+		node = numa_node_id();
+
+		if (curr->node_last == node && curr->node != node) {
+			/*
+			 * We can re-use curr->rcu because we checked curr->mm
+			 * != NULL so release_task()->call_rcu() was not called
+			 * yet and exit_task_work() is called before
+			 * exit_notify().
+			 */
+			init_task_work(&curr->rcu, task_numa_work);
+			task_work_add(curr, &curr->rcu, true);
+		}
+		curr->node_last = node;
+	}
+}
+#else
+static void account_offnode_enqueue(struct rq *rq, struct task_struct *p)
+{
+}
+
+static void account_offnode_dequeue(struct rq *rq, struct task_struct *p)
+{
+}
+
+static void task_tick_numa(struct rq *rq, struct task_struct *curr)
+{
+}
+#endif /* CONFIG_SCHED_NUMA */
+
+/**************************************************
  * Scheduling class queueing methods:
  */
 
@@ -784,9 +929,19 @@ account_entity_enqueue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	if (!parent_entity(se))
 		update_load_add(&rq_of(cfs_rq)->load, se->load.weight);
 #ifdef CONFIG_SMP
-	if (entity_is_task(se))
-		list_add(&se->group_node, &rq_of(cfs_rq)->cfs_tasks);
-#endif
+	if (entity_is_task(se)) {
+		struct rq *rq = rq_of(cfs_rq);
+		struct task_struct *p = task_of(se);
+		struct list_head *tasks = &rq->cfs_tasks;
+
+		if (offnode_task(p)) {
+			account_offnode_enqueue(rq, p);
+			tasks = offnode_tasks(rq);
+		}
+
+		list_add(&se->group_node, tasks);
+	}
+#endif /* CONFIG_SMP */
 	cfs_rq->nr_running++;
 }
 
@@ -796,8 +951,14 @@ account_entity_dequeue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	update_load_sub(&cfs_rq->load, se->load.weight);
 	if (!parent_entity(se))
 		update_load_sub(&rq_of(cfs_rq)->load, se->load.weight);
-	if (entity_is_task(se))
+	if (entity_is_task(se)) {
+		struct task_struct *p = task_of(se);
+
 		list_del_init(&se->group_node);
+
+		if (offnode_task(p))
+			account_offnode_dequeue(rq_of(cfs_rq), p);
+	}
 	cfs_rq->nr_running--;
 }
 
@@ -3293,8 +3454,6 @@ static int move_one_task(struct lb_env *env)
 	return 0;
 }
 
-static unsigned long task_h_load(struct task_struct *p);
-
 static const unsigned int sched_nr_migrate_break = 32;
 
 /*
@@ -5174,6 +5333,9 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 		cfs_rq = cfs_rq_of(se);
 		entity_tick(cfs_rq, se, queued);
 	}
+
+	if (sched_feat_numa(NUMA))
+		task_tick_numa(rq, curr);
 }
 
 /*

@@ -475,15 +475,6 @@ struct rq {
 #endif
 };
 
-static inline struct list_head *offnode_tasks(struct rq *rq)
-{
-#ifdef CONFIG_SCHED_NUMA
-	return &rq->offnode_tasks;
-#else
-	return NULL;
-#endif
-}
-
 static inline int cpu_of(struct rq *rq)
 {
 #ifdef CONFIG_SMP
@@ -500,6 +491,30 @@ DECLARE_PER_CPU(struct rq, runqueues);
 #define task_rq(p)		cpu_rq(task_cpu(p))
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
 #define raw_rq()		(&__raw_get_cpu_var(runqueues))
+
+#ifdef CONFIG_SCHED_NUMA
+static inline bool offnode_task(struct task_struct *t)
+{
+	return t->node != -1 && t->node != cpu_to_node(task_cpu(t));
+}
+
+static inline struct list_head *offnode_tasks(struct rq *rq)
+{
+	return &rq->offnode_tasks;
+}
+
+void sched_setnode(struct task_struct *p, int node);
+#else /* CONFIG_SCHED_NUMA */
+static inline bool offnode_task(struct task_struct *t)
+{
+	return false;
+}
+
+static inline struct list_head *offnode_tasks(struct rq *rq)
+{
+	return NULL;
+}
+#endif /* CONFIG_SCHED_NUMA */
 
 #ifdef CONFIG_SMP
 

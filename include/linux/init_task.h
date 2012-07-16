@@ -145,7 +145,8 @@ extern struct task_group root_task_group;
 
 #ifdef CONFIG_SCHED_NUMA
 # define INIT_TASK_NUMA(tsk)						\
-	.node = -1,
+	.node = -1,							\
+	.node_last = -1,
 #else
 # define INIT_TASK_NUMA(tsk)
 #endif
