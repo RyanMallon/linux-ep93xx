@@ -809,14 +809,73 @@ static void account_offnode_dequeue(struct rq *rq, struct task_struct *p)
 unsigned int sysctl_sched_numa_task_period = 2500;
 
 /*
+ * Determine if a process is 'big'.
+ *
+ * Currently only looks at CPU-time used, maybe we should also add an RSS
+ * heuristic.
+ */
+static bool task_numa_big(struct task_struct *p)
+{
+	struct sched_domain *sd;
+	struct task_struct *t;
+	u64 walltime = local_clock();
+	u64 runtime = 0;
+	int weight = 0;
+
+	rcu_read_lock();
+	t = p;
+	do {
+		if (t->sched_class == &fair_sched_class)
+			runtime += t->se.sum_exec_runtime;
+	} while ((t = next_thread(t)) != p);
+
+	sd = rcu_dereference(__raw_get_cpu_var(sd_node));
+	if (sd)
+		weight = sd->span_weight;
+	rcu_read_unlock();
+
+	runtime -= p->numa_runtime_stamp;
+	walltime -= p->numa_walltime_stamp;
+
+	p->numa_runtime_stamp += runtime;
+	p->numa_walltime_stamp += walltime;
+
+	/*
+	 * We're 'big' when we burn more than half a node's worth
+	 * of cputime.
+	 */
+	return runtime > walltime * max(1, weight / 2);
+}
+
+static inline bool need_numa_migration(struct task_struct *p)
+{
+	/*
+	 * We need to change our home-node, its been different for 2 samples.
+	 * See the whole P(n)^2 story in task_tick_numa().
+	 */
+	return p->node_curr == p->node_last && p->node != p->node_curr;
+}
+
+static void sched_setnode_process(struct task_struct *p, int node)
+{
+	struct task_struct *t = p;
+
+	rcu_read_lock();
+	do {
+		sched_setnode(t, node);
+	} while ((t = next_thread(t)) != p);
+	rcu_read_unlock();
+}
+
+/*
  * The expensive part of numa migration is done from task_work context.
  * Triggered from task_tick_numa().
  */
 void task_numa_work(struct callback_head *work)
 {
 	unsigned long migrate, next_scan, now = jiffies;
-	struct task_struct *t, *p = current;
-	int node = p->node_last;
+	struct task_struct *p = current;
+	int big;
 
 	WARN_ON_ONCE(p != container_of(work, struct task_struct, rcu));
 
@@ -842,14 +901,19 @@ void task_numa_work(struct callback_head *work)
 	if (cmpxchg(&p->mm->numa_next_scan, migrate, next_scan) != migrate)
 		return;
 
-	rcu_read_lock();
-	t = p;
-	do {
-		sched_setnode(t, node);
-	} while ((t = next_thread(t)) != p);
-	rcu_read_unlock();
+	/*
+	 * If this task is too big, we bail on NUMA placement for the process.
+	 */
+	big = p->mm->numa_big = task_numa_big(p);
+	if (big || need_numa_migration(p)) {
+		int node = p->node_curr;
 
-	lazy_migrate_process(p->mm);
+		if (big)
+			node = -1;
+		sched_setnode_process(p, node);
+		if (node != -1)
+			lazy_migrate_process(p->mm);
+	}
 }
 
 /*
@@ -861,12 +925,12 @@ void task_numa_work(struct callback_head *work)
 void task_tick_numa(struct rq *rq, struct task_struct *curr)
 {
 	u64 period, now;
-	int node;
 
 	/*
 	 * We don't care about NUMA placement if we don't have memory.
+	 * We also bail on placement if we're too big.
 	 */
-	if (!curr->mm)
+	if (!curr->mm || curr->mm->numa_big)
 		return;
 
 	/*
@@ -889,9 +953,12 @@ void task_tick_numa(struct rq *rq, struct task_struct *curr)
 
 	if (now - curr->node_stamp > period) {
 		curr->node_stamp = now;
-		node = numa_node_id();
 
-		if (curr->node_last == node && curr->node != node) {
+		curr->node_last = curr->node_curr;
+		curr->node_curr = numa_node_id();
+
+		if (need_numa_migration(curr) ||
+		    !time_before(jiffies, curr->mm->numa_next_scan)) {
 			/*
 			 * We can re-use curr->rcu because we checked curr->mm
 			 * != NULL so release_task()->call_rcu() was not called
@@ -901,7 +968,6 @@ void task_tick_numa(struct rq *rq, struct task_struct *curr)
 			init_task_work(&curr->rcu, task_numa_work);
 			task_work_add(curr, &curr->rcu, true);
 		}
-		curr->node_last = node;
 	}
 }
 #else

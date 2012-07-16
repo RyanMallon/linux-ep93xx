@@ -405,6 +405,7 @@ struct mm_struct {
 	struct cpumask cpumask_allocation;
 #endif
 #ifdef CONFIG_SCHED_NUMA
+	unsigned int  numa_big;
 	unsigned long numa_next_scan;
 #endif
 	struct uprobes_state uprobes_state;
