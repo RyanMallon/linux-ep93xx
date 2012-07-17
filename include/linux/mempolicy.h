@@ -254,7 +254,9 @@ static inline int vma_migratable(struct vm_area_struct *vma)
 	return 1;
 }
 
-#else
+extern void lazy_migrate_process(struct mm_struct *mm);
+
+#else /* CONFIG_NUMA */
 
 struct mempolicy {};
 
