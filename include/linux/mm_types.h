@@ -176,6 +176,12 @@ struct page {
 	 */
 	void *shadow;
 #endif
+#ifdef CONFIG_SCHED_NUMA
+	/*
+	 * XXX fold this into flags for 64bit.. see next patch.
+	 */
+	int nid_last;
+#endif
 }
 /*
  * The struct page can be forced to be double word aligned so that atomic ops
@@ -410,6 +416,15 @@ struct mm_struct {
 #endif
 	struct uprobes_state uprobes_state;
 };
+
+static inline bool mm_numa_big(struct mm_struct *mm)
+{
+#ifdef CONFIG_SCHED_NUMA
+	return mm->numa_big;
+#else
+	return false;
+#endif
+}
 
 static inline void mm_init_cpumask(struct mm_struct *mm)
 {

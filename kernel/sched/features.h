@@ -64,6 +64,7 @@ SCHED_FEAT(LB_MIN, false)
 
 #ifdef CONFIG_SCHED_NUMA
 SCHED_FEAT(NUMA,           true)
+SCHED_FEAT(NUMA_FORCE_BIG, false)
 SCHED_FEAT(NUMA_HOT,       true)
 SCHED_FEAT(NUMA_BIAS,      true)
 SCHED_FEAT(NUMA_PULL,      true)

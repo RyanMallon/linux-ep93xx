@@ -786,6 +786,16 @@ update_stats_curr_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
  * Tasks start out with their home-node unset (-1) this effectively means
  * they act !NUMA until we've established the task is busy enough to bother
  * with placement.
+ *
+ * Once we start doing NUMA placement there's two modes, 'small' process-wide
+ * and 'big' per-task. For the small mode we have a process-wide home node
+ * and lazily mirgrate all memory only when this home-node changes.
+ *
+ * For big mode we keep a home-node per task and use periodic fault scans
+ * to try and estalish a task<->page relation. This assumes the task<->page
+ * relation is a compute<->data relation, this is false for things like virt.
+ * and n:m threading solutions but its the best we can do given the
+ * information we have.
  */
 
 static unsigned long task_h_load(struct task_struct *p);
@@ -797,6 +807,7 @@ static void account_offnode_enqueue(struct rq *rq, struct task_struct *p)
 	rq->offnode_weight += p->numa_contrib;
 	rq->offnode_running++;
 }
+
 static void account_offnode_dequeue(struct rq *rq, struct task_struct *p)
 {
 	rq->offnode_weight -= p->numa_contrib;
@@ -821,6 +832,9 @@ static bool task_numa_big(struct task_struct *p)
 	u64 walltime = local_clock();
 	u64 runtime = 0;
 	int weight = 0;
+
+	if (sched_feat(NUMA_FORCE_BIG))
+		return true;
 
 	rcu_read_lock();
 	t = p;
@@ -875,6 +889,7 @@ void task_numa_work(struct callback_head *work)
 {
 	unsigned long migrate, next_scan, now = jiffies;
 	struct task_struct *p = current;
+	bool need_migration;
 	int big;
 
 	WARN_ON_ONCE(p != container_of(work, struct task_struct, rcu));
@@ -890,8 +905,19 @@ void task_numa_work(struct callback_head *work)
 	if (p->flags & PF_EXITING)
 		return;
 
+	big = p->mm->numa_big;
+	need_migration = need_numa_migration(p);
+
 	/*
-	 * Enforce maximal migration frequency..
+	 * Change per-task state before the process wide freq. throttle,
+	 * otherwise it might be a long while ere this task wins the
+	 * lottery and gets its home-node set.
+	 */
+	if (big && need_migration)
+		sched_setnode(p, p->node_curr);
+
+	/*
+	 * Enforce maximal scan/migration frequency..
 	 */
 	migrate = p->mm->numa_next_scan;
 	if (time_before(now, migrate))
@@ -901,19 +927,17 @@ void task_numa_work(struct callback_head *work)
 	if (cmpxchg(&p->mm->numa_next_scan, migrate, next_scan) != migrate)
 		return;
 
-	/*
-	 * If this task is too big, we bail on NUMA placement for the process.
-	 */
 	big = p->mm->numa_big = task_numa_big(p);
-	if (big || need_numa_migration(p)) {
-		int node = p->node_curr;
 
+	if (need_migration) {
 		if (big)
-			node = -1;
-		sched_setnode_process(p, node);
-		if (node != -1)
-			lazy_migrate_process(p->mm);
+			sched_setnode(p, p->node_curr);
+		else
+			sched_setnode_process(p, p->node_curr);
 	}
+
+	if (big || need_migration)
+		lazy_migrate_process(p->mm);
 }
 
 /*
@@ -928,9 +952,8 @@ void task_tick_numa(struct rq *rq, struct task_struct *curr)
 
 	/*
 	 * We don't care about NUMA placement if we don't have memory.
-	 * We also bail on placement if we're too big.
 	 */
-	if (!curr->mm || curr->mm->numa_big)
+	if (!curr->mm)
 		return;
 
 	/*
@@ -957,6 +980,10 @@ void task_tick_numa(struct rq *rq, struct task_struct *curr)
 		curr->node_last = curr->node_curr;
 		curr->node_curr = numa_node_id();
 
+		/*
+		 * We need to do expensive work to either migrate or
+		 * drive priodic state update or scanning for 'big' processes.
+		 */
 		if (need_numa_migration(curr) ||
 		    !time_before(jiffies, curr->mm->numa_next_scan)) {
 			/*

@@ -3448,7 +3448,7 @@ static void do_prot_none_numa(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * For NUMA systems we use the special PROT_NONE maps to drive
 	 * lazy page migration, see MPOL_MF_LAZY and related.
 	 */
-	node = mpol_misplaced(page, vma, address);
+	node = mpol_misplaced(page, vma, address, mm_numa_big(mm));
 	if (node != -1)
 		migrate_misplaced_page(mm, page, node);
 }
