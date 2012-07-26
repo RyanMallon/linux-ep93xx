@@ -1538,6 +1538,8 @@ static void __sched_fork(struct task_struct *p)
 	if (p->mm && atomic_read(&p->mm->mm_users) == 1) {
 		p->mm->numa_big = 0;
 		p->mm->numa_next_scan = jiffies;
+		p->mm->numa_migrate_success = 0;
+		p->mm->numa_migrate_failed = 0;
 	}
 
 	p->node = -1;

@@ -861,6 +861,12 @@ static bool task_numa_big(struct task_struct *p)
 	return runtime > walltime * max(1, weight / 2);
 }
 
+static bool had_many_migrate_failures(struct task_struct *p)
+{
+	/* More than 1/4 of the attempted NUMA page migrations failed. */
+	return p->mm->numa_migrate_failed * 3 > p->mm->numa_migrate_success;
+}
+
 static inline bool need_numa_migration(struct task_struct *p)
 {
 	/*
@@ -927,7 +933,13 @@ void task_numa_work(struct callback_head *work)
 	if (cmpxchg(&p->mm->numa_next_scan, migrate, next_scan) != migrate)
 		return;
 
-	big = p->mm->numa_big = task_numa_big(p);
+	if (!big) {
+		/* Age the numa migrate statistics. */
+		p->mm->numa_migrate_failed /= 2;
+		p->mm->numa_migrate_success /= 2;
+
+		big = p->mm->numa_big = task_numa_big(p);
+	}
 
 	if (need_migration) {
 		if (big)
@@ -936,7 +948,7 @@ void task_numa_work(struct callback_head *work)
 			sched_setnode_process(p, p->node_curr);
 	}
 
-	if (big || need_migration)
+	if (big || need_migration || had_many_migrate_failures(p))
 		lazy_migrate_process(p->mm);
 }
 
