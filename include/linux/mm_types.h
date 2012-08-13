@@ -13,6 +13,7 @@
 #include <linux/cpumask.h>
 #include <linux/page-debug-flags.h>
 #include <linux/uprobes.h>
+#include <linux/page-flags-layout.h>
 #include <asm/page.h>
 #include <asm/mmu.h>
 
@@ -176,11 +177,9 @@ struct page {
 	 */
 	void *shadow;
 #endif
-#ifdef CONFIG_SCHED_NUMA
-	/*
-	 * XXX fold this into flags for 64bit.. see next patch.
-	 */
-	int nid_last;
+
+#ifdef LAST_NID_NOT_IN_PAGE_FLAGS
+	int _last_nid;
 #endif
 }
 /*

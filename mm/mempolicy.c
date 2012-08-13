@@ -2265,10 +2265,9 @@ int mpol_misplaced(struct page *page, struct vm_area_struct *vma,
 	 * task_tick_numa().
 	 */
 	if (multi && (pol->flags & MPOL_F_HOME)) {
-		if (page->nid_last != polnid) {
-			page->nid_last = polnid;
+		int last_nid = page_xchg_last_nid(page, polnid);
+		if (last_nid != polnid)
 			goto out;
-		}
 	}
 
 	if (curnid != polnid)
