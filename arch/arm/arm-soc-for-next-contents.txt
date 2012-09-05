@@ -17,6 +17,7 @@ u300/cleanup	  git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-steric
 csr/marco-prepare git://gitorious.org/sirfprima2-kernel/sirfprima2-kernel.git marco-prepare
 			(includes two patches from clk-next that adds prima2 clocks)
 pmu/cleanup       git://git.kernel.org/pub/scm/linux/kernel/git/will/linux.git tags/arm-perf-3.7
+ks8695/timer      http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ks8695-time-for-arm-soc
 
 next/maintainers:
 
