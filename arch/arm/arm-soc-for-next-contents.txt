@@ -15,6 +15,7 @@ bcmring/cleanup:  patches from Arnd
 u300/cleanup	  git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git u300-cleanup
 csr/marco-prepare git://gitorious.org/sirfprima2-kernel/sirfprima2-kernel.git marco-prepare
 			(includes two patches from clk-next that adds prima2 clocks)
+pmu/cleanup       git://git.kernel.org/pub/scm/linux/kernel/git/will/linux.git tags/arm-perf-3.7
 
 next/maintainers:
 
