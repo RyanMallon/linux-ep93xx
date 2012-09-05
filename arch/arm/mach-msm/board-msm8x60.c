@@ -28,6 +28,7 @@
 
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
+#include "common.h"
 
 static void __init msm8x60_fixup(struct tag *tag, char **cmdline,
 		struct meminfo *mi)
@@ -109,7 +110,7 @@ MACHINE_START(MSM8X60_RUMI3, "QCT MSM8X60 RUMI3")
 	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_init,
 	.init_late = msm8x60_init_late,
-	.timer = &msm_timer,
+	.timer = &msm8x60_timer,
 MACHINE_END
 
 MACHINE_START(MSM8X60_SURF, "QCT MSM8X60 SURF")
@@ -120,7 +121,7 @@ MACHINE_START(MSM8X60_SURF, "QCT MSM8X60 SURF")
 	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_init,
 	.init_late = msm8x60_init_late,
-	.timer = &msm_timer,
+	.timer = &msm8x60_timer,
 MACHINE_END
 
 MACHINE_START(MSM8X60_SIM, "QCT MSM8X60 SIMULATOR")
@@ -131,7 +132,7 @@ MACHINE_START(MSM8X60_SIM, "QCT MSM8X60 SIMULATOR")
 	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_init,
 	.init_late = msm8x60_init_late,
-	.timer = &msm_timer,
+	.timer = &msm8x60_timer,
 MACHINE_END
 
 MACHINE_START(MSM8X60_FFA, "QCT MSM8X60 FFA")
@@ -142,7 +143,7 @@ MACHINE_START(MSM8X60_FFA, "QCT MSM8X60 FFA")
 	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_init,
 	.init_late = msm8x60_init_late,
-	.timer = &msm_timer,
+	.timer = &msm8x60_timer,
 MACHINE_END
 
 #ifdef CONFIG_OF
@@ -153,7 +154,7 @@ DT_MACHINE_START(MSM_DT, "Qualcomm MSM (Flattened Device Tree)")
 	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_dt_init,
 	.init_late = msm8x60_init_late,
-	.timer = &msm_timer,
+	.timer = &msm8x60_timer,
 	.dt_compat = msm8x60_fluid_match,
 MACHINE_END
 #endif /* CONFIG_OF */
