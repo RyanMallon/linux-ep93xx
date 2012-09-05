@@ -30,6 +30,8 @@ renesas/kzm9g   git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git 
 
 next/dt:
 pxa/dt:		git://github.com/hzhuang1/linux.git dt
+renesas/soc-core git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git soc-core
+
 
 next/defconfig:
 
