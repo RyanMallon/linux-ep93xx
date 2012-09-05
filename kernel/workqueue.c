@@ -1632,6 +1632,15 @@ static void idle_worker_rebind(struct worker *worker)
 
 	/* we did our part, wait for rebind_workers() to finish up */
 	wait_event(gcwq->rebind_hold, !(worker->flags & WORKER_REBIND));
+
+	/*
+	 * rebind_workers() shouldn't finish until all workers passed the
+	 * above WORKER_REBIND wait.  Tell it when done.
+	 */
+	spin_lock_irq(&worker->pool->gcwq->lock);
+	if (!--worker->idle_rebind->cnt)
+		complete(&worker->idle_rebind->done);
+	spin_unlock_irq(&worker->pool->gcwq->lock);
 }
 
 /*
@@ -1728,19 +1737,7 @@ retry:
 		goto retry;
 	}
 
-	/*
-	 * All idle workers are rebound and waiting for %WORKER_REBIND to
-	 * be cleared inside idle_worker_rebind().  Clear and release.
-	 * Clearing %WORKER_REBIND from this foreign context is safe
-	 * because these workers are still guaranteed to be idle.
-	 */
-	for_each_worker_pool(pool, gcwq)
-		list_for_each_entry(worker, &pool->idle_list, entry)
-			worker->flags &= ~WORKER_REBIND;
-
-	wake_up_all(&gcwq->rebind_hold);
-
-	/* rebind busy workers */
+	/* all idle workers are rebound, rebind busy workers */
 	for_each_busy_worker(worker, i, pos, gcwq) {
 		struct work_struct *rebind_work = &worker->rebind_work;
 		unsigned long worker_flags = worker->flags;
@@ -1769,6 +1766,34 @@ retry:
 		insert_work(get_cwq(gcwq->cpu, wq), rebind_work,
 			worker->scheduled.next,
 			work_color_to_flags(WORK_NO_COLOR));
+	}
+
+	/*
+	 * All idle workers are rebound and waiting for %WORKER_REBIND to
+	 * be cleared inside idle_worker_rebind().  Clear and release.
+	 * Clearing %WORKER_REBIND from this foreign context is safe
+	 * because these workers are still guaranteed to be idle.
+	 *
+	 * We need to make sure all idle workers passed WORKER_REBIND wait
+	 * in idle_worker_rebind() before returning; otherwise, workers can
+	 * get stuck at the wait if hotplug cycle repeats.
+	 */
+	idle_rebind.cnt = 1;
+	INIT_COMPLETION(idle_rebind.done);
+
+	for_each_worker_pool(pool, gcwq) {
+		list_for_each_entry(worker, &pool->idle_list, entry) {
+			worker->flags &= ~WORKER_REBIND;
+			idle_rebind.cnt++;
+		}
+	}
+
+	wake_up_all(&gcwq->rebind_hold);
+
+	if (--idle_rebind.cnt) {
+		spin_unlock_irq(&gcwq->lock);
+		wait_for_completion(&idle_rebind.done);
+		spin_lock_irq(&gcwq->lock);
 	}
 }
 
