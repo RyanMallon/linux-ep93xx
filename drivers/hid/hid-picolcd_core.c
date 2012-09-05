@@ -356,8 +356,7 @@ static int picolcd_raw_event(struct hid_device *hdev,
 		if (data->input_keys)
 			ret = picolcd_raw_keypad(data, report, raw_data+1, size-1);
 	} else if (report->id == REPORT_IR_DATA) {
-		if (data->input_cir)
-			ret = picolcd_raw_cir(data, report, raw_data+1, size-1);
+		ret = picolcd_raw_cir(data, report, raw_data+1, size-1);
 	} else {
 		spin_lock_irqsave(&data->lock, flags);
 		/*
@@ -447,7 +446,7 @@ static int picolcd_init_keys(struct picolcd_data *data,
 	idev->id.vendor  = hdev->vendor;
 	idev->id.product = hdev->product;
 	idev->id.version = hdev->version;
-	idev->dev.parent = hdev->dev.parent;
+	idev->dev.parent = &hdev->dev;
 	idev->keycode     = &data->keycode;
 	idev->keycodemax  = PICOLCD_KEYS;
 	idev->keycodesize = sizeof(data->keycode[0]);
@@ -653,7 +652,6 @@ static void picolcd_remove(struct hid_device *hdev)
 	device_remove_file(&hdev->dev, &dev_attr_operation_mode_delay);
 	hid_hw_close(hdev);
 	hid_hw_stop(hdev);
-	hid_set_drvdata(hdev, NULL);
 
 	/* Shortcut potential pending reply that will never arrive */
 	spin_lock_irqsave(&data->lock, flags);
@@ -671,6 +669,7 @@ static void picolcd_remove(struct hid_device *hdev)
 	picolcd_exit_cir(data);
 	picolcd_exit_keys(data);
 
+	hid_set_drvdata(hdev, NULL);
 	mutex_destroy(&data->mutex);
 	/* Finally, clean up the picolcd data itself */
 	kfree(data);
