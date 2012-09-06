@@ -258,7 +258,6 @@ void do_send_trap(struct pt_regs *regs, unsigned long address,
 {
 	siginfo_t info;
 
-	current->thread.trap_nr = signal_code;
 	if (notify_die(DIE_DABR_MATCH, "dabr_match", regs, error_code,
 			11, SIGSEGV) == NOTIFY_STOP)
 		return;
@@ -276,7 +275,6 @@ void do_dabr(struct pt_regs *regs, unsigned long address,
 {
 	siginfo_t info;
 
-	current->thread.trap_nr = TRAP_HWBKPT;
 	if (notify_die(DIE_DABR_MATCH, "dabr_match", regs, error_code,
 			11, SIGSEGV) == NOTIFY_STOP)
 		return;
