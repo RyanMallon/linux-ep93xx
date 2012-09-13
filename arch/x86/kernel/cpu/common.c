@@ -1115,8 +1115,6 @@ void syscall_init(void)
 	       X86_EFLAGS_TF|X86_EFLAGS_DF|X86_EFLAGS_IF|X86_EFLAGS_IOPL);
 }
 
-unsigned long kernel_eflags;
-
 /*
  * Copies of the original ist values from the tss are only accessed during
  * debugging, no special alignment required.
@@ -1297,8 +1295,6 @@ void __cpuinit cpu_init(void)
 
 	fpu_init();
 	xsave_init();
-
-	raw_local_save_flags(kernel_eflags);
 
 	if (is_uv_system())
 		uv_cpu_init();
