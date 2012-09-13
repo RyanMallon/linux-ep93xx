@@ -304,6 +304,8 @@ struct perf_event_attr {
 	__u32	__reserved_2;
 };
 
+#define perf_flags(attr)	(*(&(attr)->read_format + 1))
+
 /*
  * Ioctls that can be done on a perf event fd:
  */
