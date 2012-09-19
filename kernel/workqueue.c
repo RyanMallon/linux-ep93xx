@@ -3367,6 +3367,26 @@ void destroy_workqueue(struct workqueue_struct *wq)
 EXPORT_SYMBOL_GPL(destroy_workqueue);
 
 /**
+ * cwq_set_max_active - adjust max_active of a cwq
+ * @cwq: target cpu_workqueue_struct
+ * @max_active: new max_active value.
+ *
+ * Set @cwq->max_active to @max_active and activate delayed works if
+ * increased.
+ *
+ * CONTEXT:
+ * spin_lock_irq(gcwq->lock).
+ */
+static void cwq_set_max_active(struct cpu_workqueue_struct *cwq, int max_active)
+{
+	cwq->max_active = max_active;
+
+	while (!list_empty(&cwq->delayed_works) &&
+	       cwq->nr_active < cwq->max_active)
+		cwq_activate_first_delayed(cwq);
+}
+
+/**
  * workqueue_set_max_active - adjust max_active of a workqueue
  * @wq: target workqueue
  * @max_active: new max_active value.
@@ -3393,7 +3413,7 @@ void workqueue_set_max_active(struct workqueue_struct *wq, int max_active)
 
 		if (!(wq->flags & WQ_FREEZABLE) ||
 		    !(gcwq->flags & GCWQ_FREEZING))
-			get_cwq(gcwq->cpu, wq)->max_active = max_active;
+			cwq_set_max_active(get_cwq(gcwq->cpu, wq), max_active);
 
 		spin_unlock_irq(&gcwq->lock);
 	}
@@ -3783,11 +3803,7 @@ void thaw_workqueues(void)
 				continue;
 
 			/* restore max_active and repopulate worklist */
-			cwq->max_active = wq->saved_max_active;
-
-			while (!list_empty(&cwq->delayed_works) &&
-			       cwq->nr_active < cwq->max_active)
-				cwq_activate_first_delayed(cwq);
+			cwq_set_max_active(cwq, wq->saved_max_active);
 		}
 
 		for_each_worker_pool(pool, gcwq)
