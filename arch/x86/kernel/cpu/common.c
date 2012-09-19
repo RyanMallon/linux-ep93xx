@@ -1294,7 +1294,6 @@ void __cpuinit cpu_init(void)
 	dbg_restore_debug_regs();
 
 	fpu_init();
-	xsave_init();
 
 	if (is_uv_system())
 		uv_cpu_init();
@@ -1347,6 +1346,5 @@ void __cpuinit cpu_init(void)
 	dbg_restore_debug_regs();
 
 	fpu_init();
-	xsave_init();
 }
 #endif
