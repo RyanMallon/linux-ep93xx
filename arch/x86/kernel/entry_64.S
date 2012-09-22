@@ -56,6 +56,7 @@
 #include <asm/ftrace.h>
 #include <asm/percpu.h>
 #include <asm/asm.h>
+#include <asm/smap.h>
 #include <linux/err.h>
 
 /* Avoid __ASSEMBLER__'ifying <linux/audit.h> just for this.  */
@@ -567,7 +568,8 @@ END(ret_from_fork)
  * System call entry. Up to 6 arguments in registers are supported.
  *
  * SYSCALL does not save anything on the stack and does not change the
- * stack pointer.
+ * stack pointer.  However, it does mask the flags register for us, so
+ * CLD and CLAC are not needed.
  */
 
 /*
@@ -986,6 +988,7 @@ END(interrupt)
 	 */
 	.p2align CONFIG_X86_L1_CACHE_SHIFT
 common_interrupt:
+	ASM_CLAC
 	XCPT_FRAME
 	addq $-0x80,(%rsp)		/* Adjust vector to [-256,-1] range */
 	interrupt do_IRQ
@@ -1125,6 +1128,7 @@ END(common_interrupt)
  */
 .macro apicinterrupt num sym do_sym
 ENTRY(\sym)
+	ASM_CLAC
 	INTR_FRAME
 	pushq_cfi $~(\num)
 .Lcommon_\sym:
@@ -1179,6 +1183,7 @@ apicinterrupt IRQ_WORK_VECTOR \
  */
 .macro zeroentry sym do_sym
 ENTRY(\sym)
+	ASM_CLAC
 	INTR_FRAME
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	pushq_cfi $-1		/* ORIG_RAX: no syscall to restart */
@@ -1196,6 +1201,7 @@ END(\sym)
 
 .macro paranoidzeroentry sym do_sym
 ENTRY(\sym)
+	ASM_CLAC
 	INTR_FRAME
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	pushq_cfi $-1		/* ORIG_RAX: no syscall to restart */
@@ -1214,6 +1220,7 @@ END(\sym)
 #define INIT_TSS_IST(x) PER_CPU_VAR(init_tss) + (TSS_ist + ((x) - 1) * 8)
 .macro paranoidzeroentry_ist sym do_sym ist
 ENTRY(\sym)
+	ASM_CLAC
 	INTR_FRAME
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	pushq_cfi $-1		/* ORIG_RAX: no syscall to restart */
@@ -1233,6 +1240,7 @@ END(\sym)
 
 .macro errorentry sym do_sym
 ENTRY(\sym)
+	ASM_CLAC
 	XCPT_FRAME
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	subq $ORIG_RAX-R15, %rsp
@@ -1251,6 +1259,7 @@ END(\sym)
 	/* error code is on the stack already */
 .macro paranoiderrorentry sym do_sym
 ENTRY(\sym)
+	ASM_CLAC
 	XCPT_FRAME
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	subq $ORIG_RAX-R15, %rsp

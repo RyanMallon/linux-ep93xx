@@ -21,6 +21,7 @@
 #include <asm/user.h>
 #include <asm/uaccess.h>
 #include <asm/xsave.h>
+#include <asm/smap.h>
 
 #ifdef CONFIG_X86_64
 # include <asm/sigcontext32.h>
@@ -121,6 +122,22 @@ static inline void sanitize_i387_state(struct task_struct *tsk)
 	__sanitize_i387_state(tsk);
 }
 
+#define user_insn(insn, output, input...)				\
+({									\
+	int err;							\
+	asm volatile(ASM_STAC "\n"					\
+		     "1:" #insn "\n\t"					\
+		     "2: " ASM_CLAC "\n"				\
+		     ".section .fixup,\"ax\"\n"				\
+		     "3:  movl $-1,%[err]\n"				\
+		     "    jmp  2b\n"					\
+		     ".previous\n"					\
+		     _ASM_EXTABLE(1b, 3b)				\
+		     : [err] "=r" (err), output				\
+		     : "0"(0), input);					\
+	err;								\
+})
+
 #define check_insn(insn, output, input...)				\
 ({									\
 	int err;							\
@@ -138,18 +155,18 @@ static inline void sanitize_i387_state(struct task_struct *tsk)
 
 static inline int fsave_user(struct i387_fsave_struct __user *fx)
 {
-	return check_insn(fnsave %[fx]; fwait,  [fx] "=m" (*fx), "m" (*fx));
+	return user_insn(fnsave %[fx]; fwait,  [fx] "=m" (*fx), "m" (*fx));
 }
 
 static inline int fxsave_user(struct i387_fxsave_struct __user *fx)
 {
 	if (config_enabled(CONFIG_X86_32))
-		return check_insn(fxsave %[fx], [fx] "=m" (*fx), "m" (*fx));
+		return user_insn(fxsave %[fx], [fx] "=m" (*fx), "m" (*fx));
 	else if (config_enabled(CONFIG_AS_FXSAVEQ))
-		return check_insn(fxsaveq %[fx], [fx] "=m" (*fx), "m" (*fx));
+		return user_insn(fxsaveq %[fx], [fx] "=m" (*fx), "m" (*fx));
 
 	/* See comment in fpu_fxsave() below. */
-	return check_insn(rex64/fxsave (%[fx]), "=m" (*fx), [fx] "R" (fx));
+	return user_insn(rex64/fxsave (%[fx]), "=m" (*fx), [fx] "R" (fx));
 }
 
 static inline int fxrstor_checking(struct i387_fxsave_struct *fx)
