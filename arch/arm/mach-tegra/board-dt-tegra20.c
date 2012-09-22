@@ -45,7 +45,6 @@
 
 #include "board.h"
 #include "clock.h"
-#include "devices.h"
 #include "common.h"
 
 struct tegra_ehci_platform_data tegra_ehci1_pdata = {
