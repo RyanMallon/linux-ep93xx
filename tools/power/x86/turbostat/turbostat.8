@@ -6,6 +6,8 @@ turbostat \- Report processor frequency and idle statistics
 .B turbostat
 .RB [ "\-s" ]
 .RB [ "\-v" ]
+.RB [ "\-d MSR#" ]
+.RB [ "\-D MSR#" ]
 .RB [ "\-m MSR#" ]
 .RB [ "\-M MSR#" ]
 .RB command
@@ -13,6 +15,8 @@ turbostat \- Report processor frequency and idle statistics
 .B turbostat
 .RB [ "\-s" ]
 .RB [ "\-v" ]
+.RB [ "\-d MSR#" ]
+.RB [ "\-D MSR#" ]
 .RB [ "\-m MSR#" ]
 .RB [ "\-M MSR#" ]
 .RB [ "\-i interval_sec" ]
@@ -37,11 +41,13 @@ The \fB-p\fP option limits output to the 1st thread in each package.
 .PP
 The \fB-v\fP option increases verbosity.
 .PP
-The \fB-m MSR#\fP option dumps the specified 32-bit MSR,
-in addition to the usual frequency and idle statistics.
+The \fB-d MSR#\fP option includes the delta of the specified 32-bit MSR counter.
 .PP
-The \fB-M MSR#\fP option dumps the specified 64-bit MSR,
-in addition to the usual frequency and idle statistics.
+The \fB-D MSR#\fP option includes the delta of the specified 64-bit MSR counter.
+.PP
+The \fB-m MSR#\fP option includes the the specified 32-bit MSR value.
+.PP
+The \fB-M MSR#\fP option includes the the specified 64-bit MSR value.
 .PP
 The \fB-i interval_sec\fP option prints statistics every \fiinterval_sec\fP seconds.
 The default is 5 seconds.
