@@ -1,6 +1,4 @@
-obj-y                                   += board-pinmux.o
 obj-y                                   += common.o
-obj-y                                   += devices.o
 obj-y                                   += io.o
 obj-y                                   += irq.o
 obj-y                                   += clock.o
@@ -24,7 +22,6 @@ obj-$(CONFIG_SMP)                       += reset.o
 obj-$(CONFIG_HOTPLUG_CPU)               += hotplug.o
 obj-$(CONFIG_CPU_FREQ)                  += cpu-tegra.o
 obj-$(CONFIG_TEGRA_PCI)			+= pcie.o
-obj-$(CONFIG_USB_SUPPORT)		+= usb_phy.o
 
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)		+= board-dt-tegra20.o
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)		+= board-dt-tegra30.o
