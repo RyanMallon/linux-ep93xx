@@ -141,3 +141,12 @@ multiplatform/devel git://sources.calxeda.com/kernel/linux.git tags/multi-platfo
 			+ Message-Id: <1347893712-21819-1-git-send-email-robherring2@gmail.com>
 multiplatform/smp_ops  <local contents from testing/smp_ops>
 			+ Message-Id: <1347490900-8409-2-git-send-email-davidb@codeaurora.org>
+
+
+late/kirkwood:
+kirkwood/boards		git://git.infradead.org/users/jcooper/linux.git kirkwood/boards
+kirkwood/defconfig	git://git.infradead.org/users/jcooper/linux.git kirkwood/defconfig
+kirkwood/dt		git://git.infradead.org/users/jcooper/linux.git kirkwood/dt
+kirkwood/cleanup	git://git.infradead.org/users/jcooper/linux.git kirkwood/cleanup
+kirkwood/addr_decode	git://git.infradead.org/users/jcooper/linux.git kirkwood/addr_decode
+kirkwood/drivers	git://git.infradead.org/users/jcooper/linux.git kirkwood/drivers
