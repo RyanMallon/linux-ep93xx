@@ -93,6 +93,7 @@ tegra/dt2	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git 
 mxs/dt2		git://git.linaro.org/people/shawnguo/linux-2.6.git tags/mxs-dt-3.7-2
 imx/dt2		git://git.linaro.org/people/shawnguo/linux-2.6.git tags/imx-dt-3.7-2
 ux500/dt	git://git.linaro.org/people/ljones/linux-3.0-ux500.git for-arm-soc-next
+vt8500/devel	git://git.code.sf.net/p/linuxwmt/code tags/vt8500-for-next
 
 next/cleanup2:
 tegra/cleanup2	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.7-cleanup2
