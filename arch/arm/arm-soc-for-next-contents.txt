@@ -73,6 +73,7 @@ omap/omap-device git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap
 omap/am33xx	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-devel-am33xx-for-v3.7
 			depends on omap cleanup branches
 bcm2835/soc	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git rpi-for-3.7
+			+ Message-Id: <1348506174-28641-1-git-send-email-swarren@wwwdotorg.org>
 samsung/devel	git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/devel-samsung
 
 next/dt:
