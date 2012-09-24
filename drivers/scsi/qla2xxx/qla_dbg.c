@@ -11,7 +11,7 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x0122       | 0x4b,0xba,0xfa |
+ * | Module Init and Probe        |       0x0123       | 0x4b,0xba,0xfa |
  * | Mailbox commands             |       0x1140       | 0x111a-0x111b  |
  * |                              |                    | 0x112c-0x112e  |
  * |                              |                    | 0x113a         |
@@ -30,7 +30,7 @@
  * |                              |                    | 0x800b,0x8039  |
  * | AER/EEH                      |       0x9011       |		|
  * | Virtual Port                 |       0xa007       |		|
- * | ISP82XX Specific             |       0xb054       | 0xb024         |
+ * | ISP82XX Specific             |       0xb055       | 0xb024         |
  * | MultiQ                       |       0xc00c       |		|
  * | Misc                         |       0xd010       |		|
  * | Target Mode		  |	  0xe06f       |		|
@@ -2357,7 +2357,7 @@ ql_dbg(uint32_t level, scsi_qla_host_t *vha, int32_t id, const char *fmt, ...)
 
 /*
  * This function is for formatting and logging debug information.
- * It is to be used when vha is not available and pci is availble,
+ * It is to be used when vha is not available and pci is available,
  * i.e., before host allocation. It formats the message and logs it
  * to the messages file.
  * parameters:
@@ -2452,7 +2452,7 @@ ql_log(uint32_t level, scsi_qla_host_t *vha, int32_t id, const char *fmt, ...)
 
 /*
  * This function is for formatting and logging log messages.
- * It is to be used when vha is not available and pci is availble,
+ * It is to be used when vha is not available and pci is available,
  * i.e., before host allocation. It formats the message and logs
  * it to the messages file. All the messages are logged irrespective
  * of the value of ql2xextended_error_logging.

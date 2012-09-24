@@ -1078,7 +1078,7 @@ __qla2xxx_eh_generic_reset(char *name, enum nexus_wait_type type,
 	if (qla2x00_eh_wait_for_pending_commands(vha, cmd->device->id,
 	    cmd->device->lun, type) != QLA_SUCCESS) {
 		ql_log(ql_log_warn, vha, 0x800d,
-		    "wait for peding cmds failed for cmd=%p.\n", cmd);
+		    "wait for pending cmds failed for cmd=%p.\n", cmd);
 		goto eh_reset_failed;
 	}
 
@@ -1177,7 +1177,7 @@ qla2xxx_eh_bus_reset(struct scsi_cmnd *cmd)
 eh_bus_reset_done:
 	ql_log(ql_log_warn, vha, 0x802b,
 	    "BUS RESET %s nexus=%ld:%d:%d.\n",
-	    (ret == FAILED) ? "FAILED" : "SUCCEDED", vha->host_no, id, lun);
+	    (ret == FAILED) ? "FAILED" : "SUCCEEDED", vha->host_no, id, lun);
 
 	return ret;
 }
@@ -2872,6 +2872,7 @@ void qla2x00_free_fcports(struct scsi_qla_host *vha)
 
 	list_for_each_entry_safe(fcport, tfcport, &vha->vp_fcports, list) {
 		list_del(&fcport->list);
+		qla2x00_clear_loop_id(fcport);
 		kfree(fcport);
 		fcport = NULL;
 	}
@@ -3169,6 +3170,18 @@ qla2x00_mem_alloc(struct qla_hw_data *ha, uint16_t req_len, uint16_t rsp_len,
 	}
 
 	INIT_LIST_HEAD(&ha->vp_list);
+
+	/* Allocate memory for our loop_id bitmap */
+	ha->loop_id_map = kzalloc(BITS_TO_LONGS(LOOPID_MAP_SIZE) * sizeof(long),
+	    GFP_KERNEL);
+	if (!ha->loop_id_map)
+		goto fail_async_pd;
+	else {
+		qla2x00_set_reserved_loop_ids(ha);
+		ql_dbg_pci(ql_dbg_init, ha->pdev, 0x0123,
+		    "loop_id_map=%p. \n", ha->loop_id_map);
+	}
+
 	return 1;
 
 fail_async_pd:
@@ -3352,6 +3365,7 @@ qla2x00_mem_free(struct qla_hw_data *ha)
 	kfree(ha->nvram);
 	kfree(ha->npiv_info);
 	kfree(ha->swl);
+	kfree(ha->loop_id_map);
 
 	ha->srb_mempool = NULL;
 	ha->ctx_mempool = NULL;
@@ -3687,7 +3701,7 @@ void qla2x00_relogin(struct scsi_qla_host *vha)
 			}
 
 			if (fcport->login_retry == 0 && status != QLA_SUCCESS)
-				fcport->loop_id = FC_NO_LOOP_ID;
+				qla2x00_clear_loop_id(fcport);
 		}
 		if (test_bit(LOOP_RESYNC_NEEDED, &vha->dpc_flags))
 			break;
@@ -4495,6 +4509,7 @@ static struct pci_device_id qla2xxx_pci_tbl[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_QLOGIC, PCI_DEVICE_ID_QLOGIC_ISP2031) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_QLOGIC, PCI_DEVICE_ID_QLOGIC_ISP8001) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_QLOGIC, PCI_DEVICE_ID_QLOGIC_ISP8021) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_QLOGIC, PCI_DEVICE_ID_QLOGIC_ISP8031) },
 	{ 0 },
 };
 MODULE_DEVICE_TABLE(pci, qla2xxx_pci_tbl);
