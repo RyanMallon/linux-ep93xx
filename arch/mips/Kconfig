@@ -89,6 +89,7 @@ config ATH79
 	select CEVT_R4K
 	select CSRC_R4K
 	select DMA_NONCOHERENT
+	select HAVE_CLK
 	select IRQ_CPU
 	select MIPS_MACHINE
 	select SYS_HAS_CPU_MIPS32_R2
@@ -2340,12 +2341,10 @@ config SECCOMP
 	  If unsure, say Y. Only embedded should say N here.
 
 config USE_OF
-	bool "Flattened Device Tree support"
+	bool
 	select OF
 	select OF_EARLY_FLATTREE
 	select IRQ_DOMAIN
-	help
-	  Include support for flattened device tree machine descriptions.
 
 endmenu
 
