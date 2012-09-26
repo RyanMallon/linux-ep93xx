@@ -1089,6 +1089,7 @@ static int lis3lv02d_init_dt(struct lis3lv02d *lis3)
 	return 0;
 }
 #endif
+EXPORT_SYMBOL_GPL(lis3lv02d_init_dt);
 
 /*
  * Initialise the accelerometer and the various subsystems.
