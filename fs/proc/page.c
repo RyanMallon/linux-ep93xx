@@ -115,7 +115,12 @@ u64 stable_page_flags(struct page *page)
 		u |= 1 << KPF_COMPOUND_TAIL;
 	if (PageHuge(page))
 		u |= 1 << KPF_HUGE;
-	else if (PageTransCompound(page))
+	/*
+	 * Since THP is relevant only for anonymous pages so far, we check it
+	 * explicitly with PageAnon. Otherwise thp is confounded with non-huge
+	 * compound pages like slab pages.
+	 */
+	else if (PageTransCompound(page) && PageAnon(page))
 		u |= 1 << KPF_THP;
 
 	/*
