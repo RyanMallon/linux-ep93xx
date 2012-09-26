@@ -319,4 +319,7 @@ config MODULES_USE_ELF_REL
 config HAVE_VIRT_CPU_ACCOUNTING
 	bool
 
+config HAVE_ARCH_TRANSPARENT_HUGEPAGE
+	bool
+
 source "kernel/gcov/Kconfig"
