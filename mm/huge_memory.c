@@ -768,7 +768,6 @@ void do_huge_pmd_prot_none(struct mm_struct *mm, struct vm_area_struct *vma,
 {
 	unsigned long haddr = address & HPAGE_PMD_MASK;
 	struct page *page = NULL;
-	int node;
 
 	spin_lock(&mm->page_table_lock);
 	if (unlikely(!pmd_same(*pmd, entry)))
@@ -791,8 +790,7 @@ void do_huge_pmd_prot_none(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * XXX should we serialize against split_huge_page ?
 	 */
 
-	node = mpol_misplaced(page, vma, haddr, mm->numa_big);
-	if (node == -1)
+	if (mpol_misplaced(page, vma, haddr, mm->numa_big) == -1)
 		goto do_fixup;
 
 	/*
