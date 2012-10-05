@@ -3410,7 +3410,7 @@ static void move_task(struct task_struct *p, struct lb_env *env)
 	check_preempt_curr(env->dst_rq, p, 0);
 }
 
-static int task_numa_hot(struct task_struct *p, int from_cpu, int to_cpu)
+static int task_numa_hot(struct task_struct *p, struct lb_env *env)
 {
 	int from_dist, to_dist;
 	int node = tsk_home_node(p);
@@ -3418,8 +3418,8 @@ static int task_numa_hot(struct task_struct *p, int from_cpu, int to_cpu)
 	if (!sched_feat_numa(NUMA_HOT) || node == -1)
 		return 0; /* no node preference */
 
-	from_dist = node_distance(cpu_to_node(from_cpu), node);
-	to_dist = node_distance(cpu_to_node(to_cpu), node);
+	from_dist = node_distance(cpu_to_node(env->src_cpu), node);
+	to_dist = node_distance(cpu_to_node(env->dst_cpu), node);
 
 	if (to_dist < from_dist)
 		return 0; /* getting closer is ok */
@@ -3431,7 +3431,7 @@ static int task_numa_hot(struct task_struct *p, int from_cpu, int to_cpu)
  * Is this task likely cache-hot:
  */
 static int
-task_hot(struct task_struct *p, u64 now, struct sched_domain *sd)
+task_hot(struct task_struct *p, struct lb_env *env)
 {
 	s64 delta;
 
@@ -3454,7 +3454,7 @@ task_hot(struct task_struct *p, u64 now, struct sched_domain *sd)
 	if (sysctl_sched_migration_cost == 0)
 		return 0;
 
-	delta = now - p->se.exec_start;
+	delta = env->src_rq->clock_task - p->se.exec_start;
 
 	return delta < (s64)sysctl_sched_migration_cost;
 }
@@ -3511,8 +3511,9 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 	 * 2) too many balance attempts have failed.
 	 */
 
-	tsk_cache_hot = task_hot(p, env->src_rq->clock_task, env->sd);
-	tsk_cache_hot |= task_numa_hot(p, env->src_cpu, env->dst_cpu);
+	tsk_cache_hot = task_hot(p, env);
+	if (env->idle == CPU_NOT_IDLE)
+		tsk_cache_hot |= task_numa_hot(p, env);
 	if (!tsk_cache_hot ||
 		env->sd->nr_balance_failed > env->sd->cache_nice_tries) {
 #ifdef CONFIG_SCHEDSTATS
