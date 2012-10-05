@@ -3009,7 +3009,7 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 	}
 
 	rcu_read_lock();
-	if (sched_feat_numa(NUMA_BIAS) && node != -1) {
+	if (sched_feat_numa(NUMA_TTWU_BIAS) && node != -1) {
 		/*
 		 * For fork,exec find the idlest cpu in the home-node.
 		 */
@@ -3031,7 +3031,10 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 			if (node_cpu < 0)
 				goto find_sd;
 
-			prev_cpu = node_cpu;
+			if (sched_feat_numa(NUMA_TTWU_TO))
+				cpu = node_cpu;
+			else
+				prev_cpu = node_cpu;
 		}
 	}
 
