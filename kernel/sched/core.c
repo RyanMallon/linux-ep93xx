@@ -1535,11 +1535,15 @@ static void __sched_fork(struct task_struct *p)
 #endif
 
 #ifdef CONFIG_SCHED_NUMA
-	if (p->mm && atomic_read(&p->mm->mm_users) == 1)
+	if (p->mm && atomic_read(&p->mm->mm_users) == 1) {
 		p->mm->numa_next_scan = jiffies;
+		p->mm->numa_scan_seq = 0;
+	}
 
 	p->node = -1;
 	p->node_stamp = 0ULL;
+	p->numa_scan_seq = p->mm ? p->mm->numa_scan_seq : 0;
+	p->numa_faults = NULL;
 #endif /* CONFIG_SCHED_NUMA */
 }
 
@@ -1782,6 +1786,7 @@ static void finish_task_switch(struct rq *rq, struct task_struct *prev)
 	if (mm)
 		mmdrop(mm);
 	if (unlikely(prev_state == TASK_DEAD)) {
+		task_numa_free(prev);
 		/*
 		 * Remove function-return probe instances associated with this
 		 * task and put them back on the free list.

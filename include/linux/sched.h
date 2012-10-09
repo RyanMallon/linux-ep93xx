@@ -1523,8 +1523,10 @@ struct task_struct {
 #endif
 #ifdef CONFIG_SCHED_NUMA
 	int node;			/* task home node   */
+	int numa_scan_seq;
 	u64 node_stamp;			/* migration stamp  */
 	unsigned long numa_contrib;
+	unsigned long *numa_faults;
 #endif /* CONFIG_SCHED_NUMA */
 
 	struct rcu_head rcu;
@@ -1598,14 +1600,37 @@ struct task_struct {
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
 #define tsk_cpus_allowed(tsk) (&(tsk)->cpus_allowed)
 
+#ifdef CONFIG_SCHED_NUMA
 static inline int tsk_home_node(struct task_struct *p)
 {
-#ifdef CONFIG_SCHED_NUMA
 	return p->node;
-#else
-	return -1;
-#endif
 }
+
+extern void task_numa_placement(void);
+extern void __task_numa_fault(int node);
+static inline void task_numa_fault(int node)
+{
+	struct task_struct *p = current;
+
+	if (likely(p->numa_faults))
+		p->numa_faults[node]++;
+	else
+		__task_numa_fault(node);
+}
+#else
+static inline int tsk_home_node(struct task_struct *p)
+{
+	return -1;
+}
+
+static inline void task_numa_placement(void)
+{
+}
+
+static inline void task_numa_fault(int node)
+{
+}
+#endif /* CONFIG_SCHED_NUMA */
 
 /*
  * Priority of a process goes from 0..MAX_PRIO-1, valid RT
@@ -2126,6 +2151,7 @@ extern int sched_setscheduler(struct task_struct *, int,
 			      const struct sched_param *);
 extern int sched_setscheduler_nocheck(struct task_struct *, int,
 				      const struct sched_param *);
+extern void sched_setnode(struct task_struct *p, int node);
 extern struct task_struct *idle_task(int cpu);
 /**
  * is_idle_task - is the specified task an idle task?

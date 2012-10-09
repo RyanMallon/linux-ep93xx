@@ -816,6 +816,54 @@ static void account_offnode_dequeue(struct rq *rq, struct task_struct *p)
 unsigned int sysctl_sched_numa_task_period = 2500;
 
 /*
+ * Got a PROT_NONE fault for a page on @node.
+ */
+void __task_numa_fault(int node)
+{
+	struct task_struct *p = current;
+
+	if (!p->numa_faults) {
+		p->numa_faults = kzalloc(sizeof(unsigned long) * nr_node_ids,
+					 GFP_KERNEL);
+	}
+
+	if (!p->numa_faults)
+		return;
+
+	p->numa_faults[node]++;
+}
+
+void task_numa_placement(void)
+{
+	unsigned long faults, max_faults = 0;
+	struct task_struct *p = current;
+	int node, max_node = -1;
+	int seq = ACCESS_ONCE(p->mm->numa_scan_seq);
+
+	if (p->numa_scan_seq == seq)
+		return;
+
+	p->numa_scan_seq = seq;
+
+	if (unlikely(!p->numa_faults))
+		return;
+
+	for (node = 0; node < nr_node_ids; node++) {
+		faults = p->numa_faults[node];
+
+		if (faults > max_faults) {
+			max_faults = faults;
+			max_node = node;
+		}
+
+		p->numa_faults[node] /= 2;
+	}
+
+	if (max_node != -1 && p->node != max_node)
+		sched_setnode(p, max_node);
+}
+
+/*
  * The expensive part of numa migration is done from task_work context.
  * Triggered from task_tick_numa().
  */
@@ -849,6 +897,7 @@ void task_numa_work(struct callback_head *work)
 	if (cmpxchg(&mm->numa_next_scan, migrate, next_scan) != migrate)
 		return;
 
+	ACCESS_ONCE(mm->numa_scan_seq)++;
 	lazy_migrate_process(mm);
 }
 

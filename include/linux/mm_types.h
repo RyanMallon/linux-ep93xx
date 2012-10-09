@@ -411,6 +411,7 @@ struct mm_struct {
 #endif
 #ifdef CONFIG_SCHED_NUMA
 	unsigned long numa_next_scan;
+	int numa_scan_seq;
 #endif
 	struct uprobes_state uprobes_state;
 };
