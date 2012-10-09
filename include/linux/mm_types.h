@@ -410,36 +410,10 @@ struct mm_struct {
 	struct cpumask cpumask_allocation;
 #endif
 #ifdef CONFIG_SCHED_NUMA
-	unsigned int  numa_big;
 	unsigned long numa_next_scan;
-	unsigned int  numa_migrate_success;
-	unsigned int  numa_migrate_failed;
 #endif
 	struct uprobes_state uprobes_state;
 };
-
-#ifdef CONFIG_SCHED_NUMA
-static __always_inline void mm_inc_numa_migrate(struct mm_struct *mm, bool success)
-{
-	if (success)
-		mm->numa_migrate_success++;
-	else
-		mm->numa_migrate_failed++;
-}
-#else
-static inline void mm_inc_numa_migrate(struct mm_struct *mm, bool success)
-{
-}
-#endif /* CONFNIG_SCHED_NUMA */
-
-static inline bool mm_numa_big(struct mm_struct *mm)
-{
-#ifdef CONFIG_SCHED_NUMA
-	return mm->numa_big;
-#else
-	return false;
-#endif
-}
 
 static inline void mm_init_cpumask(struct mm_struct *mm)
 {

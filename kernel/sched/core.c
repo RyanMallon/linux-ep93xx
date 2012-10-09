@@ -1535,19 +1535,11 @@ static void __sched_fork(struct task_struct *p)
 #endif
 
 #ifdef CONFIG_SCHED_NUMA
-	if (p->mm && atomic_read(&p->mm->mm_users) == 1) {
-		p->mm->numa_big = 0;
+	if (p->mm && atomic_read(&p->mm->mm_users) == 1)
 		p->mm->numa_next_scan = jiffies;
-		p->mm->numa_migrate_success = 0;
-		p->mm->numa_migrate_failed = 0;
-	}
 
 	p->node = -1;
-	p->node_curr = -1;
-	p->node_last = -1;
 	p->node_stamp = 0ULL;
-	p->numa_runtime_stamp = 0;
-	p->numa_walltime_stamp = local_clock();
 #endif /* CONFIG_SCHED_NUMA */
 }
 
@@ -6011,7 +6003,7 @@ void sched_setnode(struct task_struct *p, int node)
 	if (running)
 		p->sched_class->put_prev_task(rq, p);
 
-	p->node = p->node_curr = p->node_last = node;
+	p->node = node;
 
 	if (running)
 		p->sched_class->set_curr_task(rq);

@@ -2187,7 +2187,7 @@ mpol_shared_policy_lookup(struct shared_policy *sp, unsigned long idx)
  * Called from fault path where we know the vma and faulting address.
  */
 int mpol_misplaced(struct page *page, struct vm_area_struct *vma,
-		   unsigned long addr, int multi)
+		   unsigned long addr)
 {
 	struct mempolicy *pol;
 	struct zone *zone;
@@ -2264,7 +2264,7 @@ int mpol_misplaced(struct page *page, struct vm_area_struct *vma,
 	 * long-term node of this task, further reducing noise. Also see
 	 * task_tick_numa().
 	 */
-	if (multi && (pol->flags & MPOL_F_HOME)) {
+	if (pol->flags & MPOL_F_HOME) {
 		int last_nid = page_xchg_last_nid(page, polnid);
 		if (last_nid != polnid)
 			goto out;

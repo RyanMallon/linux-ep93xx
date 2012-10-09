@@ -1523,10 +1523,7 @@ struct task_struct {
 #endif
 #ifdef CONFIG_SCHED_NUMA
 	int node;			/* task home node   */
-	int node_curr, node_last;	/* home node filter */
 	u64 node_stamp;			/* migration stamp  */
-	u64 numa_runtime_stamp;
-	u64 numa_walltime_stamp;
 	unsigned long numa_contrib;
 #endif /* CONFIG_SCHED_NUMA */
 

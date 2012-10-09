@@ -787,15 +787,11 @@ update_stats_curr_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
  * they act !NUMA until we've established the task is busy enough to bother
  * with placement.
  *
- * Once we start doing NUMA placement there's two modes, 'small' process-wide
- * and 'big' per-task. For the small mode we have a process-wide home node
- * and lazily mirgrate all memory only when this home-node changes.
- *
- * For big mode we keep a home-node per task and use periodic fault scans
- * to try and estalish a task<->page relation. This assumes the task<->page
- * relation is a compute<->data relation, this is false for things like virt.
- * and n:m threading solutions but its the best we can do given the
- * information we have.
+ * We keep a home-node per task and use periodic fault scans to try and
+ * estalish a task<->page relation. This assumes the task<->page relation is a
+ * compute<->data relation, this is false for things like virt. and n:m
+ * threading solutions but its the best we can do given the information we
+ * have.
  */
 
 static unsigned long task_h_load(struct task_struct *p);
@@ -820,74 +816,6 @@ static void account_offnode_dequeue(struct rq *rq, struct task_struct *p)
 unsigned int sysctl_sched_numa_task_period = 2500;
 
 /*
- * Determine if a process is 'big'.
- *
- * Currently only looks at CPU-time used, maybe we should also add an RSS
- * heuristic.
- */
-static bool task_numa_big(struct task_struct *p)
-{
-	struct sched_domain *sd;
-	struct task_struct *t;
-	u64 walltime = local_clock();
-	u64 runtime = 0;
-	int weight = 0;
-
-	if (sched_feat(NUMA_FORCE_BIG))
-		return true;
-
-	rcu_read_lock();
-	t = p;
-	do {
-		if (t->sched_class == &fair_sched_class)
-			runtime += t->se.sum_exec_runtime;
-	} while ((t = next_thread(t)) != p);
-
-	sd = rcu_dereference(__raw_get_cpu_var(sd_node));
-	if (sd)
-		weight = sd->span_weight;
-	rcu_read_unlock();
-
-	runtime -= p->numa_runtime_stamp;
-	walltime -= p->numa_walltime_stamp;
-
-	p->numa_runtime_stamp += runtime;
-	p->numa_walltime_stamp += walltime;
-
-	/*
-	 * We're 'big' when we burn more than half a node's worth
-	 * of cputime.
-	 */
-	return runtime > walltime * max(1, weight / 2);
-}
-
-static bool had_many_migrate_failures(struct task_struct *p)
-{
-	/* More than 1/4 of the attempted NUMA page migrations failed. */
-	return p->mm->numa_migrate_failed * 3 > p->mm->numa_migrate_success;
-}
-
-static inline bool need_numa_migration(struct task_struct *p)
-{
-	/*
-	 * We need to change our home-node, its been different for 2 samples.
-	 * See the whole P(n)^2 story in task_tick_numa().
-	 */
-	return p->node_curr == p->node_last && p->node != p->node_curr;
-}
-
-static void sched_setnode_process(struct task_struct *p, int node)
-{
-	struct task_struct *t = p;
-
-	rcu_read_lock();
-	do {
-		sched_setnode(t, node);
-	} while ((t = next_thread(t)) != p);
-	rcu_read_unlock();
-}
-
-/*
  * The expensive part of numa migration is done from task_work context.
  * Triggered from task_tick_numa().
  */
@@ -895,8 +823,7 @@ void task_numa_work(struct callback_head *work)
 {
 	unsigned long migrate, next_scan, now = jiffies;
 	struct task_struct *p = current;
-	bool need_migration;
-	int big;
+	struct mm_struct *mm = p->mm;
 
 	WARN_ON_ONCE(p != container_of(work, struct task_struct, rcu));
 
@@ -911,52 +838,22 @@ void task_numa_work(struct callback_head *work)
 	if (p->flags & PF_EXITING)
 		return;
 
-	big = p->mm->numa_big;
-	need_migration = need_numa_migration(p);
-
-	/*
-	 * Change per-task state before the process wide freq. throttle,
-	 * otherwise it might be a long while ere this task wins the
-	 * lottery and gets its home-node set.
-	 */
-	if (big && need_migration)
-		sched_setnode(p, p->node_curr);
-
 	/*
 	 * Enforce maximal scan/migration frequency..
 	 */
-	migrate = p->mm->numa_next_scan;
+	migrate = mm->numa_next_scan;
 	if (time_before(now, migrate))
 		return;
 
 	next_scan = now + 2*msecs_to_jiffies(sysctl_sched_numa_task_period);
-	if (cmpxchg(&p->mm->numa_next_scan, migrate, next_scan) != migrate)
+	if (cmpxchg(&mm->numa_next_scan, migrate, next_scan) != migrate)
 		return;
 
-	if (!big) {
-		/* Age the numa migrate statistics. */
-		p->mm->numa_migrate_failed /= 2;
-		p->mm->numa_migrate_success /= 2;
-
-		big = p->mm->numa_big = task_numa_big(p);
-	}
-
-	if (need_migration) {
-		if (big)
-			sched_setnode(p, p->node_curr);
-		else
-			sched_setnode_process(p, p->node_curr);
-	}
-
-	if (big || need_migration || had_many_migrate_failures(p))
-		lazy_migrate_process(p->mm);
+	lazy_migrate_process(mm);
 }
 
 /*
- * Sample task location from hardirq context (tick), this has minimal bias with
- * obvious exceptions of frequency interference and tick avoidance techniques.
- * If this were to become a problem we could move this sampling into the
- * sleep/wakeup path -- but we'd prefer to avoid that for obvious reasons.
+ * Drive the periodic memory faults..
  */
 void task_tick_numa(struct rq *rq, struct task_struct *curr)
 {
@@ -969,15 +866,6 @@ void task_tick_numa(struct rq *rq, struct task_struct *curr)
 		return;
 
 	/*
-	 * Sample our node location every @sysctl_sched_numa_task_period
-	 * runtime ms. We use a two stage selection in order to filter
-	 * unlikely locations.
-	 *
-	 * If P(n) is the probability we're on node 'n', then the probability
-	 * we sample the same node twice is P(n)^2. This quadric squishes small
-	 * values and makes it more likely we end up on nodes where we have
-	 * significant presence.
-	 *
 	 * Using runtime rather than walltime has the dual advantage that
 	 * we (mostly) drive the selection from busy threads and that the
 	 * task needs to have done some actual work before we bother with
@@ -989,15 +877,7 @@ void task_tick_numa(struct rq *rq, struct task_struct *curr)
 	if (now - curr->node_stamp > period) {
 		curr->node_stamp = now;
 
-		curr->node_last = curr->node_curr;
-		curr->node_curr = numa_node_id();
-
-		/*
-		 * We need to do expensive work to either migrate or
-		 * drive priodic state update or scanning for 'big' processes.
-		 */
-		if (need_numa_migration(curr) ||
-		    !time_before(jiffies, curr->mm->numa_next_scan)) {
+		if (!time_before(jiffies, curr->mm->numa_next_scan)) {
 			/*
 			 * We can re-use curr->rcu because we checked curr->mm
 			 * != NULL so release_task()->call_rcu() was not called
