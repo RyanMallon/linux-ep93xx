@@ -811,9 +811,14 @@ static void account_offnode_dequeue(struct rq *rq, struct task_struct *p)
 }
 
 /*
- * numa task sample period in ms: 2.5s
+ * numa task sample period in ms: 5s
  */
-unsigned int sysctl_sched_numa_task_period = 2500;
+unsigned int sysctl_sched_numa_task_period = 5000;
+
+/*
+ * Wait for the 2-sample stuff to settle before migrating again
+ */
+unsigned int sysctl_sched_numa_settle_count = 2;
 
 /*
  * Got a PROT_NONE fault for a page on @node.
@@ -859,8 +864,13 @@ void task_numa_placement(void)
 		p->numa_faults[node] /= 2;
 	}
 
-	if (max_node != -1 && p->node != max_node)
+	if (max_node != -1 && p->node != max_node) {
+		if (sched_feat(NUMA_SETTLE) &&
+		    (seq - p->numa_migrate_seq) <= (int)sysctl_sched_numa_settle_count)
+			return;
+		p->numa_migrate_seq = seq;
 		sched_setnode(p, max_node);
+	}
 }
 
 /*

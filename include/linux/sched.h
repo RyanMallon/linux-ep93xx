@@ -1524,6 +1524,7 @@ struct task_struct {
 #ifdef CONFIG_SCHED_NUMA
 	int node;			/* task home node   */
 	int numa_scan_seq;
+	int numa_migrate_seq;
 	u64 node_stamp;			/* migration stamp  */
 	unsigned long numa_contrib;
 	unsigned long *numa_faults;
@@ -2076,6 +2077,7 @@ extern unsigned int sysctl_sched_time_avg;
 extern unsigned int sysctl_timer_migration;
 extern unsigned int sysctl_sched_shares_window;
 extern unsigned int sysctl_sched_numa_task_period;
+extern unsigned int sysctl_sched_numa_settle_count;
 
 int sched_proc_update_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *length,
