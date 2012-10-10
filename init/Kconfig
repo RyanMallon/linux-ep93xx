@@ -692,8 +692,11 @@ config EMBEDDED_NUMA
 	bool
 
 config SCHED_NUMA
-	def_bool y
+	bool "Memory placement aware NUMA scheduler"
+	default n
 	depends on SMP && NUMA && MIGRATION && !EMBEDDED_NUMA
+	help
+	  This option adds support for automatic NUMA aware memory/task placement.
 
 menuconfig CGROUPS
 	boolean "Control Group support"
