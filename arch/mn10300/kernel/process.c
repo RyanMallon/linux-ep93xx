@@ -306,14 +306,14 @@ asmlinkage long sys_execve(const char __user *name,
 			   const char __user *const __user *argv,
 			   const char __user *const __user *envp)
 {
-	char *filename;
+	struct filename *filename;
 	int error;
 
 	filename = getname(name);
 	error = PTR_ERR(filename);
 	if (IS_ERR(filename))
 		return error;
-	error = do_execve(filename, argv, envp, current_frame());
+	error = do_execve(filename->name, argv, envp, current_frame());
 	putname(filename);
 	return error;
 }
