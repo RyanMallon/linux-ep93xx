@@ -1136,7 +1136,7 @@ static inline int file_check_writeable(struct file *filp)
 #if BITS_PER_LONG==32
 #define MAX_LFS_FILESIZE	(((loff_t)PAGE_CACHE_SIZE << (BITS_PER_LONG-1))-1) 
 #elif BITS_PER_LONG==64
-#define MAX_LFS_FILESIZE 	((loff_t)0x7fffffffffffffff)
+#define MAX_LFS_FILESIZE 	((loff_t)0x7fffffffffffffffLL)
 #endif
 
 #define FL_POSIX	1
@@ -1511,7 +1511,6 @@ struct super_block {
 	unsigned long		s_magic;
 	struct dentry		*s_root;
 	struct rw_semaphore	s_umount;
-	struct mutex		s_lock;
 	int			s_count;
 	atomic_t		s_active;
 #ifdef CONFIG_SECURITY
@@ -2080,7 +2079,7 @@ extern struct vfsmount *kern_mount_data(struct file_system_type *, void *data);
 extern void kern_unmount(struct vfsmount *mnt);
 extern int may_umount_tree(struct vfsmount *);
 extern int may_umount(struct vfsmount *);
-extern long do_mount(char *, char *, char *, unsigned long, void *);
+extern long do_mount(const char *, const char *, const char *, unsigned long, void *);
 extern struct vfsmount *collect_mounts(struct path *);
 extern void drop_collected_mounts(struct vfsmount *);
 extern int iterate_mounts(int (*)(struct vfsmount *, void *), void *,
@@ -2197,6 +2196,13 @@ static inline int break_lease(struct inode *inode, unsigned int mode)
 #endif /* CONFIG_FILE_LOCKING */
 
 /* fs/open.c */
+struct audit_names;
+struct filename {
+	const char		*name;	/* pointer to actual string */
+	const __user char	*uptr;	/* original userland pointer */
+	struct audit_names	*aname;
+	bool			separate; /* should "name" be freed? */
+};
 
 extern int do_truncate(struct dentry *, loff_t start, unsigned int time_attrs,
 		       struct file *filp);
@@ -2204,12 +2210,15 @@ extern int do_fallocate(struct file *file, int mode, loff_t offset,
 			loff_t len);
 extern long do_sys_open(int dfd, const char __user *filename, int flags,
 			umode_t mode);
+extern struct file *file_open_name(struct filename *, int, umode_t);
 extern struct file *filp_open(const char *, int, umode_t);
 extern struct file *file_open_root(struct dentry *, struct vfsmount *,
 				   const char *, int);
 extern struct file * dentry_open(const struct path *, int, const struct cred *);
 extern int filp_close(struct file *, fl_owner_t id);
-extern char * getname(const char __user *);
+
+extern struct filename *getname(const char __user *);
+
 enum {
 	FILE_CREATED = 1,
 	FILE_OPENED = 2
@@ -2229,13 +2238,14 @@ extern void __init vfs_caches_init(unsigned long);
 
 extern struct kmem_cache *names_cachep;
 
-#define __getname_gfp(gfp)	kmem_cache_alloc(names_cachep, (gfp))
-#define __getname()		__getname_gfp(GFP_KERNEL)
+extern void final_putname(struct filename *name);
+
+#define __getname()		kmem_cache_alloc(names_cachep, GFP_KERNEL)
 #define __putname(name)		kmem_cache_free(names_cachep, (void *)(name))
 #ifndef CONFIG_AUDITSYSCALL
-#define putname(name)   __putname(name)
+#define putname(name)		final_putname(name)
 #else
-extern void putname(const char *name);
+extern void putname(struct filename *name);
 #endif
 
 #ifdef CONFIG_BLOCK
