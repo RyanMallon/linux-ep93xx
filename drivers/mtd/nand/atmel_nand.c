@@ -41,6 +41,7 @@
 #include <linux/gpio.h>
 #include <linux/io.h>
 #include <linux/platform_data/atmel.h>
+#include <linux/pinctrl/consumer.h>
 
 #include <mach/cpu.h>
 
@@ -1370,6 +1371,7 @@ static int __init atmel_nand_probe(struct platform_device *pdev)
 	struct resource *mem;
 	struct mtd_part_parser_data ppdata = {};
 	int res;
+	struct pinctrl *pinctrl;
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!mem) {
@@ -1414,8 +1416,16 @@ static int __init atmel_nand_probe(struct platform_device *pdev)
 	nand_chip->IO_ADDR_W = host->io_base;
 	nand_chip->cmd_ctrl = atmel_nand_cmd_ctrl;
 
+	pinctrl = devm_pinctrl_get_select_default(&pdev->dev);
+	if (IS_ERR(pinctrl)) {
+		dev_err(host->dev, "Failed to request pinctrl\n");
+		res = PTR_ERR(pinctrl);
+		goto err_ecc_ioremap;
+	}
+
 	if (gpio_is_valid(host->board.rdy_pin)) {
-		res = gpio_request(host->board.rdy_pin, "nand_rdy");
+		res = devm_gpio_request(&pdev->dev,
+				host->board.rdy_pin, "nand_rdy");
 		if (res < 0) {
 			dev_err(&pdev->dev,
 				"can't request rdy gpio %d\n",
@@ -1426,8 +1436,7 @@ static int __init atmel_nand_probe(struct platform_device *pdev)
 		res = gpio_direction_input(host->board.rdy_pin);
 		if (res < 0) {
 			dev_err(&pdev->dev,
-				"can't request input direction rdy gpio %d\n",
-				host->board.rdy_pin);
+				"can't request input direction rdy gpio %d\n", host->board.rdy_pin);
 			goto err_ecc_ioremap;
 		}
 
@@ -1435,7 +1444,8 @@ static int __init atmel_nand_probe(struct platform_device *pdev)
 	}
 
 	if (gpio_is_valid(host->board.enable_pin)) {
-		res = gpio_request(host->board.enable_pin, "nand_enable");
+		res = devm_gpio_request(&pdev->dev,
+				host->board.enable_pin, "nand_enable");
 		if (res < 0) {
 			dev_err(&pdev->dev,
 				"can't request enable gpio %d\n",
@@ -1465,7 +1475,8 @@ static int __init atmel_nand_probe(struct platform_device *pdev)
 	atmel_nand_enable(host);
 
 	if (gpio_is_valid(host->board.det_pin)) {
-		res = gpio_request(host->board.det_pin, "nand_det");
+		res = devm_gpio_request(&pdev->dev,
+				host->board.det_pin, "nand_det");
 		if (res < 0) {
 			dev_err(&pdev->dev,
 				"can't request det gpio %d\n",
