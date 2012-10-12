@@ -25,6 +25,7 @@
 #include <linux/i2c.h>
 #include <linux/regmap.h>
 #include <linux/regulator/of_regulator.h>
+#include <linux/regulator/machine.h>
 
 #include <linux/mfd/core.h>
 #include <linux/mfd/tps6586x.h>
@@ -346,6 +347,7 @@ failed:
 
 #ifdef CONFIG_OF
 static struct of_regulator_match tps6586x_matches[] = {
+	{ .name = "sys",     .driver_data = (void *)TPS6586X_ID_SYS     },
 	{ .name = "sm0",     .driver_data = (void *)TPS6586X_ID_SM_0    },
 	{ .name = "sm1",     .driver_data = (void *)TPS6586X_ID_SM_1    },
 	{ .name = "sm2",     .driver_data = (void *)TPS6586X_ID_SM_2    },
@@ -369,6 +371,7 @@ static struct tps6586x_platform_data *tps6586x_parse_dt(struct i2c_client *clien
 	struct tps6586x_platform_data *pdata;
 	struct tps6586x_subdev_info *devs;
 	struct device_node *regs;
+	const char *sys_rail_name = NULL;
 	unsigned int count;
 	unsigned int i, j;
 	int err;
@@ -391,12 +394,22 @@ static struct tps6586x_platform_data *tps6586x_parse_dt(struct i2c_client *clien
 		return NULL;
 
 	for (i = 0, j = 0; i < num && j < count; i++) {
+		struct regulator_init_data *reg_idata;
+
 		if (!tps6586x_matches[i].init_data)
 			continue;
 
+		reg_idata  = tps6586x_matches[i].init_data;
 		devs[j].name = "tps6586x-regulator";
 		devs[j].platform_data = tps6586x_matches[i].init_data;
 		devs[j].id = (int)tps6586x_matches[i].driver_data;
+		if (devs[j].id == TPS6586X_ID_SYS)
+			sys_rail_name = reg_idata->constraints.name;
+
+		if ((devs[j].id == TPS6586X_ID_LDO_5) ||
+			(devs[j].id == TPS6586X_ID_LDO_RTC))
+			reg_idata->supply_regulator = sys_rail_name;
+
 		devs[j].of_node = tps6586x_matches[i].of_node;
 		j++;
 	}
@@ -493,7 +506,8 @@ static int __devinit tps6586x_i2c_probe(struct i2c_client *client,
 	}
 
 	ret = mfd_add_devices(tps6586x->dev, -1,
-			tps6586x_cell, ARRAY_SIZE(tps6586x_cell), NULL, 0);
+			      tps6586x_cell, ARRAY_SIZE(tps6586x_cell),
+			      NULL, 0, NULL);
 	if (ret < 0) {
 		dev_err(&client->dev, "mfd_add_devices failed: %d\n", ret);
 		goto err_mfd_add;

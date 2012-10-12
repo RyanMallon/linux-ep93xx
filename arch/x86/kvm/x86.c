@@ -5113,17 +5113,20 @@ static void post_kvm_run_save(struct kvm_vcpu *vcpu)
 			!kvm_event_needs_reinjection(vcpu);
 }
 
-static void vapic_enter(struct kvm_vcpu *vcpu)
+static int vapic_enter(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 	struct page *page;
 
 	if (!apic || !apic->vapic_addr)
-		return;
+		return 0;
 
 	page = gfn_to_page(vcpu->kvm, apic->vapic_addr >> PAGE_SHIFT);
+	if (is_error_page(page))
+		return -EFAULT;
 
 	vcpu->arch.apic->vapic_page = page;
+	return 0;
 }
 
 static void vapic_exit(struct kvm_vcpu *vcpu)
@@ -5430,7 +5433,11 @@ static int __vcpu_run(struct kvm_vcpu *vcpu)
 	}
 
 	vcpu->srcu_idx = srcu_read_lock(&kvm->srcu);
-	vapic_enter(vcpu);
+	r = vapic_enter(vcpu);
+	if (r) {
+		srcu_read_unlock(&kvm->srcu, vcpu->srcu_idx);
+		return r;
+	}
 
 	r = 1;
 	while (r > 0) {
@@ -5972,7 +5979,7 @@ void kvm_load_guest_fpu(struct kvm_vcpu *vcpu)
 	 */
 	kvm_put_guest_xcr0(vcpu);
 	vcpu->guest_fpu_loaded = 1;
-	unlazy_fpu(current);
+	__kernel_fpu_begin();
 	fpu_restore_checking(&vcpu->arch.guest_fpu);
 	trace_kvm_fpu(1);
 }
@@ -5986,6 +5993,7 @@ void kvm_put_guest_fpu(struct kvm_vcpu *vcpu)
 
 	vcpu->guest_fpu_loaded = 0;
 	fpu_save_init(&vcpu->arch.guest_fpu);
+	__kernel_fpu_end();
 	++vcpu->stat.fpu_reload;
 	kvm_make_request(KVM_REQ_DEACTIVATE_FPU, vcpu);
 	trace_kvm_fpu(0);

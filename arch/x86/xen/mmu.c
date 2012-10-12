@@ -1174,8 +1174,13 @@ static void xen_exit_mmap(struct mm_struct *mm)
 	spin_unlock(&mm->page_table_lock);
 }
 
-static void __init xen_pagetable_setup_start(pgd_t *base)
+static void xen_post_allocator_init(void);
+
+static void __init xen_pagetable_init(void)
 {
+	paging_init();
+	xen_setup_shared_info();
+	xen_post_allocator_init();
 }
 
 static __init void xen_mapping_pagetable_reserve(u64 start, u64 end)
@@ -1190,14 +1195,6 @@ static __init void xen_mapping_pagetable_reserve(u64 start, u64 end)
 		make_lowmem_page_readwrite(__va(end));
 		end += PAGE_SIZE;
 	}
-}
-
-static void xen_post_allocator_init(void);
-
-static void __init xen_pagetable_setup_done(pgd_t *base)
-{
-	xen_setup_shared_info();
-	xen_post_allocator_init();
 }
 
 static void xen_write_cr2(unsigned long cr2)
@@ -1283,7 +1280,7 @@ static void xen_flush_tlb_others(const struct cpumask *cpus,
 	cpumask_clear_cpu(smp_processor_id(), to_cpumask(args->mask));
 
 	args->op.cmd = MMUEXT_TLB_FLUSH_MULTI;
-	if (start != TLB_FLUSH_ALL && (end - start) <= PAGE_SIZE) {
+	if (end != TLB_FLUSH_ALL && (end - start) <= PAGE_SIZE) {
 		args->op.cmd = MMUEXT_INVLPG_MULTI;
 		args->op.arg1.linear_addr = start;
 	}
@@ -2068,8 +2065,7 @@ static const struct pv_mmu_ops xen_mmu_ops __initconst = {
 void __init xen_init_mmu_ops(void)
 {
 	x86_init.mapping.pagetable_reserve = xen_mapping_pagetable_reserve;
-	x86_init.paging.pagetable_setup_start = xen_pagetable_setup_start;
-	x86_init.paging.pagetable_setup_done = xen_pagetable_setup_done;
+	x86_init.paging.pagetable_init = xen_pagetable_init;
 	pv_mmu_ops = xen_mmu_ops;
 
 	memset(dummy_mapping, 0xff, PAGE_SIZE);

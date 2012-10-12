@@ -1493,8 +1493,12 @@ static void __vmx_load_host_state(struct vcpu_vmx *vmx)
 #ifdef CONFIG_X86_64
 	wrmsrl(MSR_KERNEL_GS_BASE, vmx->msr_host_kernel_gs_base);
 #endif
-	if (user_has_fpu())
-		clts();
+	/*
+	 * If the FPU is not active (through the host task or
+	 * the guest vcpu), then restore the cr0.TS bit.
+	 */
+	if (!user_has_fpu() && !vmx->vcpu.guest_fpu_loaded)
+		stts();
 	load_gdt(&__get_cpu_var(host_gdt));
 }
 
@@ -3619,6 +3623,7 @@ static void seg_setup(int seg)
 
 static int alloc_apic_access_page(struct kvm *kvm)
 {
+	struct page *page;
 	struct kvm_userspace_memory_region kvm_userspace_mem;
 	int r = 0;
 
@@ -3633,7 +3638,13 @@ static int alloc_apic_access_page(struct kvm *kvm)
 	if (r)
 		goto out;
 
-	kvm->arch.apic_access_page = gfn_to_page(kvm, 0xfee00);
+	page = gfn_to_page(kvm, 0xfee00);
+	if (is_error_page(page)) {
+		r = -EFAULT;
+		goto out;
+	}
+
+	kvm->arch.apic_access_page = page;
 out:
 	mutex_unlock(&kvm->slots_lock);
 	return r;
@@ -3641,6 +3652,7 @@ out:
 
 static int alloc_identity_pagetable(struct kvm *kvm)
 {
+	struct page *page;
 	struct kvm_userspace_memory_region kvm_userspace_mem;
 	int r = 0;
 
@@ -3656,8 +3668,13 @@ static int alloc_identity_pagetable(struct kvm *kvm)
 	if (r)
 		goto out;
 
-	kvm->arch.ept_identity_pagetable = gfn_to_page(kvm,
-			kvm->arch.ept_identity_map_addr >> PAGE_SHIFT);
+	page = gfn_to_page(kvm, kvm->arch.ept_identity_map_addr >> PAGE_SHIFT);
+	if (is_error_page(page)) {
+		r = -EFAULT;
+		goto out;
+	}
+
+	kvm->arch.ept_identity_pagetable = page;
 out:
 	mutex_unlock(&kvm->slots_lock);
 	return r;
@@ -3730,7 +3747,7 @@ static void vmx_set_constant_host_state(void)
 	unsigned long tmpl;
 	struct desc_ptr dt;
 
-	vmcs_writel(HOST_CR0, read_cr0() | X86_CR0_TS);  /* 22.2.3 */
+	vmcs_writel(HOST_CR0, read_cr0() & ~X86_CR0_TS);  /* 22.2.3 */
 	vmcs_writel(HOST_CR4, read_cr4());  /* 22.2.3, 22.2.5 */
 	vmcs_writel(HOST_CR3, read_cr3());  /* 22.2.3  FIXME: shadow tables */
 
@@ -4530,7 +4547,7 @@ static int handle_cr(struct kvm_vcpu *vcpu)
 				vcpu->run->exit_reason = KVM_EXIT_SET_TPR;
 				return 0;
 			}
-		};
+		}
 		break;
 	case 2: /* clts */
 		handle_clts(vcpu);
@@ -6575,7 +6592,7 @@ static void vmx_cpuid_update(struct kvm_vcpu *vcpu)
 	/* Exposing INVPCID only when PCID is exposed */
 	best = kvm_find_cpuid_entry(vcpu, 0x7, 0);
 	if (vmx_invpcid_supported() &&
-	    best && (best->ecx & bit(X86_FEATURE_INVPCID)) &&
+	    best && (best->ebx & bit(X86_FEATURE_INVPCID)) &&
 	    guest_cpuid_has_pcid(vcpu)) {
 		exec_control |= SECONDARY_EXEC_ENABLE_INVPCID;
 		vmcs_write32(SECONDARY_VM_EXEC_CONTROL,
@@ -6585,7 +6602,7 @@ static void vmx_cpuid_update(struct kvm_vcpu *vcpu)
 		vmcs_write32(SECONDARY_VM_EXEC_CONTROL,
 			     exec_control);
 		if (best)
-			best->ecx &= ~bit(X86_FEATURE_INVPCID);
+			best->ebx &= ~bit(X86_FEATURE_INVPCID);
 	}
 }
 

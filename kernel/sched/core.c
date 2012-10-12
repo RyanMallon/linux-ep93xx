@@ -1780,7 +1780,7 @@ static void finish_task_switch(struct rq *rq, struct task_struct *prev)
 	 *		Manfred Spraul <manfred@colorfullife.com>
 	 */
 	prev_state = prev->state;
-	account_switch_vtime(prev);
+	vtime_task_switch(prev);
 	finish_arch_switch(prev);
 	perf_event_task_sched_in(prev, current);
 	finish_lock_switch(rq, prev);
@@ -1903,6 +1903,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
 #endif
 
 	/* Here we just switch the register state and the stack. */
+	rcu_switch(prev, next);
 	switch_to(prev, next, prev);
 
 	barrier();
@@ -2926,6 +2927,21 @@ asmlinkage void __sched schedule(void)
 }
 EXPORT_SYMBOL(schedule);
 
+#ifdef CONFIG_RCU_USER_QS
+asmlinkage void __sched schedule_user(void)
+{
+	/*
+	 * If we come here after a random call to set_need_resched(),
+	 * or we have been woken up remotely but the IPI has not yet arrived,
+	 * we haven't yet exited the RCU idle mode. Do it here manually until
+	 * we find a better solution.
+	 */
+	rcu_user_exit();
+	schedule();
+	rcu_user_enter();
+}
+#endif
+
 /**
  * schedule_preempt_disabled - called with preemption disabled
  *
@@ -3027,6 +3043,7 @@ asmlinkage void __sched preempt_schedule_irq(void)
 	/* Catch callers which need to be fixed */
 	BUG_ON(ti->preempt_count || !irqs_disabled());
 
+	rcu_user_exit();
 	do {
 		add_preempt_count(PREEMPT_ACTIVE);
 		local_irq_enable();
@@ -5476,11 +5493,6 @@ static void destroy_sched_domains(struct sched_domain *sd, int cpu)
  * SD_SHARE_PKG_RESOURCE set (Last Level Cache Domain) for this
  * allows us to avoid some pointer chasing select_idle_sibling().
  *
- * Iterate domains and sched_groups downward, assigning CPUs to be
- * select_idle_sibling() hw buddy.  Cross-wiring hw makes bouncing
- * due to random perturbation self canceling, ie sw buddies pull
- * their counterpart to their CPU's hw counterpart.
- *
  * Also keep a unique ID per domain (we use the first cpu number in
  * the cpumask of the domain), this allows us to quickly tell if
  * two cpus are in the same cache domain, see cpus_share_cache().
@@ -5496,40 +5508,8 @@ static void update_domain_cache(int cpu)
 	int id = cpu;
 
 	sd = highest_flag_domain(cpu, SD_SHARE_PKG_RESOURCES);
-	if (sd) {
-		struct sched_domain *tmp = sd;
-		struct sched_group *sg, *prev;
-		bool right;
-
-		/*
-		 * Traverse to first CPU in group, and count hops
-		 * to cpu from there, switching direction on each
-		 * hop, never ever pointing the last CPU rightward.
-		 */
-		do {
-			id = cpumask_first(sched_domain_span(tmp));
-			prev = sg = tmp->groups;
-			right = 1;
-
-			while (cpumask_first(sched_group_cpus(sg)) != id)
-				sg = sg->next;
-
-			while (!cpumask_test_cpu(cpu, sched_group_cpus(sg))) {
-				prev = sg;
-				sg = sg->next;
-				right = !right;
-			}
-
-			/* A CPU went down, never point back to domain start. */
-			if (right && cpumask_first(sched_group_cpus(sg->next)) == id)
-				right = false;
-
-			sg = right ? sg->next : prev;
-			tmp->idle_buddy = cpumask_first(sched_group_cpus(sg));
-		} while ((tmp = tmp->child));
-
+	if (sd)
 		id = cpumask_first(sched_domain_span(sd));
-	}
 
 	rcu_assign_pointer(per_cpu(sd_llc, cpu), sd);
 	per_cpu(sd_llc_id, cpu) = id;
