@@ -787,15 +787,11 @@ update_stats_curr_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
  * they act !NUMA until we've established the task is busy enough to bother
  * with placement.
  *
- * Once we start doing NUMA placement there's two modes, 'small' process-wide
- * and 'big' per-task. For the small mode we have a process-wide home node
- * and lazily mirgrate all memory only when this home-node changes.
- *
- * For big mode we keep a home-node per task and use periodic fault scans
- * to try and estalish a task<->page relation. This assumes the task<->page
- * relation is a compute<->data relation, this is false for things like virt.
- * and n:m threading solutions but its the best we can do given the
- * information we have.
+ * We keep a home-node per task and use periodic fault scans to try and
+ * estalish a task<->page relation. This assumes the task<->page relation is a
+ * compute<->data relation, this is false for things like virt. and n:m
+ * threading solutions but its the best we can do given the information we
+ * have.
  */
 
 static unsigned long task_h_load(struct task_struct *p);
@@ -815,76 +811,66 @@ static void account_offnode_dequeue(struct rq *rq, struct task_struct *p)
 }
 
 /*
- * numa task sample period in ms: 2.5s
+ * numa task sample period in ms: 5s
  */
-unsigned int sysctl_sched_numa_task_period = 2500;
+unsigned int sysctl_sched_numa_task_period = 5000;
 
 /*
- * Determine if a process is 'big'.
- *
- * Currently only looks at CPU-time used, maybe we should also add an RSS
- * heuristic.
+ * Wait for the 2-sample stuff to settle before migrating again
  */
-static bool task_numa_big(struct task_struct *p)
+unsigned int sysctl_sched_numa_settle_count = 2;
+
+/*
+ * Got a PROT_NONE fault for a page on @node.
+ */
+void __task_numa_fault(int node)
 {
-	struct sched_domain *sd;
-	struct task_struct *t;
-	u64 walltime = local_clock();
-	u64 runtime = 0;
-	int weight = 0;
+	struct task_struct *p = current;
 
-	if (sched_feat(NUMA_FORCE_BIG))
-		return true;
+	if (!p->numa_faults) {
+		p->numa_faults = kzalloc(sizeof(unsigned long) * nr_node_ids,
+					 GFP_KERNEL);
+	}
 
-	rcu_read_lock();
-	t = p;
-	do {
-		if (t->sched_class == &fair_sched_class)
-			runtime += t->se.sum_exec_runtime;
-	} while ((t = next_thread(t)) != p);
+	if (!p->numa_faults)
+		return;
 
-	sd = rcu_dereference(__raw_get_cpu_var(sd_node));
-	if (sd)
-		weight = sd->span_weight;
-	rcu_read_unlock();
-
-	runtime -= p->numa_runtime_stamp;
-	walltime -= p->numa_walltime_stamp;
-
-	p->numa_runtime_stamp += runtime;
-	p->numa_walltime_stamp += walltime;
-
-	/*
-	 * We're 'big' when we burn more than half a node's worth
-	 * of cputime.
-	 */
-	return runtime > walltime * max(1, weight / 2);
+	p->numa_faults[node]++;
 }
 
-static bool had_many_migrate_failures(struct task_struct *p)
+void task_numa_placement(void)
 {
-	/* More than 1/4 of the attempted NUMA page migrations failed. */
-	return p->mm->numa_migrate_failed * 3 > p->mm->numa_migrate_success;
-}
+	unsigned long faults, max_faults = 0;
+	struct task_struct *p = current;
+	int node, max_node = -1;
+	int seq = ACCESS_ONCE(p->mm->numa_scan_seq);
 
-static inline bool need_numa_migration(struct task_struct *p)
-{
-	/*
-	 * We need to change our home-node, its been different for 2 samples.
-	 * See the whole P(n)^2 story in task_tick_numa().
-	 */
-	return p->node_curr == p->node_last && p->node != p->node_curr;
-}
+	if (p->numa_scan_seq == seq)
+		return;
 
-static void sched_setnode_process(struct task_struct *p, int node)
-{
-	struct task_struct *t = p;
+	p->numa_scan_seq = seq;
 
-	rcu_read_lock();
-	do {
-		sched_setnode(t, node);
-	} while ((t = next_thread(t)) != p);
-	rcu_read_unlock();
+	if (unlikely(!p->numa_faults))
+		return;
+
+	for (node = 0; node < nr_node_ids; node++) {
+		faults = p->numa_faults[node];
+
+		if (faults > max_faults) {
+			max_faults = faults;
+			max_node = node;
+		}
+
+		p->numa_faults[node] /= 2;
+	}
+
+	if (max_node != -1 && p->node != max_node) {
+		if (sched_feat(NUMA_SETTLE) &&
+		    (seq - p->numa_migrate_seq) <= (int)sysctl_sched_numa_settle_count)
+			return;
+		p->numa_migrate_seq = seq;
+		sched_setnode(p, max_node);
+	}
 }
 
 /*
@@ -895,8 +881,7 @@ void task_numa_work(struct callback_head *work)
 {
 	unsigned long migrate, next_scan, now = jiffies;
 	struct task_struct *p = current;
-	bool need_migration;
-	int big;
+	struct mm_struct *mm = p->mm;
 
 	WARN_ON_ONCE(p != container_of(work, struct task_struct, rcu));
 
@@ -911,52 +896,23 @@ void task_numa_work(struct callback_head *work)
 	if (p->flags & PF_EXITING)
 		return;
 
-	big = p->mm->numa_big;
-	need_migration = need_numa_migration(p);
-
-	/*
-	 * Change per-task state before the process wide freq. throttle,
-	 * otherwise it might be a long while ere this task wins the
-	 * lottery and gets its home-node set.
-	 */
-	if (big && need_migration)
-		sched_setnode(p, p->node_curr);
-
 	/*
 	 * Enforce maximal scan/migration frequency..
 	 */
-	migrate = p->mm->numa_next_scan;
+	migrate = mm->numa_next_scan;
 	if (time_before(now, migrate))
 		return;
 
 	next_scan = now + 2*msecs_to_jiffies(sysctl_sched_numa_task_period);
-	if (cmpxchg(&p->mm->numa_next_scan, migrate, next_scan) != migrate)
+	if (cmpxchg(&mm->numa_next_scan, migrate, next_scan) != migrate)
 		return;
 
-	if (!big) {
-		/* Age the numa migrate statistics. */
-		p->mm->numa_migrate_failed /= 2;
-		p->mm->numa_migrate_success /= 2;
-
-		big = p->mm->numa_big = task_numa_big(p);
-	}
-
-	if (need_migration) {
-		if (big)
-			sched_setnode(p, p->node_curr);
-		else
-			sched_setnode_process(p, p->node_curr);
-	}
-
-	if (big || need_migration || had_many_migrate_failures(p))
-		lazy_migrate_process(p->mm);
+	ACCESS_ONCE(mm->numa_scan_seq)++;
+	lazy_migrate_process(mm);
 }
 
 /*
- * Sample task location from hardirq context (tick), this has minimal bias with
- * obvious exceptions of frequency interference and tick avoidance techniques.
- * If this were to become a problem we could move this sampling into the
- * sleep/wakeup path -- but we'd prefer to avoid that for obvious reasons.
+ * Drive the periodic memory faults..
  */
 void task_tick_numa(struct rq *rq, struct task_struct *curr)
 {
@@ -969,15 +925,6 @@ void task_tick_numa(struct rq *rq, struct task_struct *curr)
 		return;
 
 	/*
-	 * Sample our node location every @sysctl_sched_numa_task_period
-	 * runtime ms. We use a two stage selection in order to filter
-	 * unlikely locations.
-	 *
-	 * If P(n) is the probability we're on node 'n', then the probability
-	 * we sample the same node twice is P(n)^2. This quadric squishes small
-	 * values and makes it more likely we end up on nodes where we have
-	 * significant presence.
-	 *
 	 * Using runtime rather than walltime has the dual advantage that
 	 * we (mostly) drive the selection from busy threads and that the
 	 * task needs to have done some actual work before we bother with
@@ -989,15 +936,7 @@ void task_tick_numa(struct rq *rq, struct task_struct *curr)
 	if (now - curr->node_stamp > period) {
 		curr->node_stamp = now;
 
-		curr->node_last = curr->node_curr;
-		curr->node_curr = numa_node_id();
-
-		/*
-		 * We need to do expensive work to either migrate or
-		 * drive priodic state update or scanning for 'big' processes.
-		 */
-		if (need_numa_migration(curr) ||
-		    !time_before(jiffies, curr->mm->numa_next_scan)) {
+		if (!time_before(jiffies, curr->mm->numa_next_scan)) {
 			/*
 			 * We can re-use curr->rcu because we checked curr->mm
 			 * != NULL so release_task()->call_rcu() was not called
@@ -3009,7 +2948,7 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 	}
 
 	rcu_read_lock();
-	if (sched_feat_numa(NUMA_BIAS) && node != -1) {
+	if (sched_feat_numa(NUMA_TTWU_BIAS) && node != -1) {
 		/*
 		 * For fork,exec find the idlest cpu in the home-node.
 		 */
@@ -3031,7 +2970,10 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 			if (node_cpu < 0)
 				goto find_sd;
 
-			prev_cpu = node_cpu;
+			if (sched_feat_numa(NUMA_TTWU_TO))
+				cpu = node_cpu;
+			else
+				prev_cpu = node_cpu;
 		}
 	}
 
@@ -3407,7 +3349,7 @@ static void move_task(struct task_struct *p, struct lb_env *env)
 	check_preempt_curr(env->dst_rq, p, 0);
 }
 
-static int task_numa_hot(struct task_struct *p, int from_cpu, int to_cpu)
+static int task_numa_hot(struct task_struct *p, struct lb_env *env)
 {
 	int from_dist, to_dist;
 	int node = tsk_home_node(p);
@@ -3415,8 +3357,8 @@ static int task_numa_hot(struct task_struct *p, int from_cpu, int to_cpu)
 	if (!sched_feat_numa(NUMA_HOT) || node == -1)
 		return 0; /* no node preference */
 
-	from_dist = node_distance(cpu_to_node(from_cpu), node);
-	to_dist = node_distance(cpu_to_node(to_cpu), node);
+	from_dist = node_distance(cpu_to_node(env->src_cpu), node);
+	to_dist = node_distance(cpu_to_node(env->dst_cpu), node);
 
 	if (to_dist < from_dist)
 		return 0; /* getting closer is ok */
@@ -3428,7 +3370,7 @@ static int task_numa_hot(struct task_struct *p, int from_cpu, int to_cpu)
  * Is this task likely cache-hot:
  */
 static int
-task_hot(struct task_struct *p, u64 now, struct sched_domain *sd)
+task_hot(struct task_struct *p, struct lb_env *env)
 {
 	s64 delta;
 
@@ -3451,7 +3393,7 @@ task_hot(struct task_struct *p, u64 now, struct sched_domain *sd)
 	if (sysctl_sched_migration_cost == 0)
 		return 0;
 
-	delta = now - p->se.exec_start;
+	delta = env->src_rq->clock_task - p->se.exec_start;
 
 	return delta < (s64)sysctl_sched_migration_cost;
 }
@@ -3508,8 +3450,9 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 	 * 2) too many balance attempts have failed.
 	 */
 
-	tsk_cache_hot = task_hot(p, env->src_rq->clock_task, env->sd);
-	tsk_cache_hot |= task_numa_hot(p, env->src_cpu, env->dst_cpu);
+	tsk_cache_hot = task_hot(p, env);
+	if (env->idle == CPU_NOT_IDLE)
+		tsk_cache_hot |= task_numa_hot(p, env);
 	if (!tsk_cache_hot ||
 		env->sd->nr_balance_failed > env->sd->cache_nice_tries) {
 #ifdef CONFIG_SCHEDSTATS
@@ -4566,7 +4509,7 @@ find_busiest_group(struct lb_env *env, int *balance)
 
 	/* There is no busy sibling group to pull tasks from */
 	if (!sds.busiest || sds.busiest_nr_running == 0)
-		goto out_balanced;
+		goto ret;
 
 	sds.avg_load = (SCHED_POWER_SCALE * sds.total_load) / sds.total_pwr;
 
@@ -4588,14 +4531,14 @@ find_busiest_group(struct lb_env *env, int *balance)
 	 * don't try and pull any tasks.
 	 */
 	if (sds.this_load >= sds.max_load)
-		goto out_balanced;
+		goto ret;
 
 	/*
 	 * Don't pull any tasks if this group is already above the domain
 	 * average load.
 	 */
 	if (sds.this_load >= sds.avg_load)
-		goto out_balanced;
+		goto ret;
 
 	if (env->idle == CPU_IDLE) {
 		/*

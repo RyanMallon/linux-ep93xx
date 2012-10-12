@@ -2187,7 +2187,7 @@ mpol_shared_policy_lookup(struct shared_policy *sp, unsigned long idx)
  * Called from fault path where we know the vma and faulting address.
  */
 int mpol_misplaced(struct page *page, struct vm_area_struct *vma,
-		   unsigned long addr, int multi)
+		   unsigned long addr)
 {
 	struct mempolicy *pol;
 	struct zone *zone;
@@ -2255,17 +2255,16 @@ int mpol_misplaced(struct page *page, struct vm_area_struct *vma,
 	 *
 	 * This quadric squishes small probabilities, making it less likely
 	 * we act on an unlikely task<->page relation.
-	 *
-	 * NOTE: effectively we're using task-home-node<->page-node relations
-	 * since those are the only thing we can affect.
-	 *
-	 * NOTE: we're using task-home-node as opposed to the current node
-	 * the task might be running on, since the task-home-node is the
-	 * long-term node of this task, further reducing noise. Also see
-	 * task_tick_numa().
 	 */
-	if (multi && (pol->flags & MPOL_F_HOME)) {
-		int last_nid = page_xchg_last_nid(page, polnid);
+	if (pol->flags & MPOL_F_HOME) {
+		int last_nid;
+
+		/*
+		 * Migrate towards the current node, depends on
+		 * task_numa_placement() details.
+		 */
+		polnid = numa_node_id();
+		last_nid = page_xchg_last_nid(page, polnid);
 		if (last_nid != polnid)
 			goto out;
 	}

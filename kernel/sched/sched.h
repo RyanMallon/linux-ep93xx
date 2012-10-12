@@ -3,6 +3,7 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/stop_machine.h>
+#include <linux/slab.h>
 
 #include "cpupri.h"
 
@@ -503,7 +504,10 @@ static inline struct list_head *offnode_tasks(struct rq *rq)
 	return &rq->offnode_tasks;
 }
 
-void sched_setnode(struct task_struct *p, int node);
+static inline void task_numa_free(struct task_struct *p)
+{
+	kfree(p->numa_faults);
+}
 #else /* CONFIG_SCHED_NUMA */
 static inline bool offnode_task(struct task_struct *t)
 {
@@ -513,6 +517,10 @@ static inline bool offnode_task(struct task_struct *t)
 static inline struct list_head *offnode_tasks(struct rq *rq)
 {
 	return NULL;
+}
+
+static inline void task_numa_free(struct task_struct *p)
+{
 }
 #endif /* CONFIG_SCHED_NUMA */
 

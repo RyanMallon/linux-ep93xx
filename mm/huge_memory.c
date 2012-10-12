@@ -790,7 +790,7 @@ void do_huge_pmd_prot_none(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * XXX should we serialize against split_huge_page ?
 	 */
 
-	if (mpol_misplaced(page, vma, haddr, mm->numa_big) == -1)
+	if (mpol_misplaced(page, vma, haddr) == -1)
 		goto do_fixup;
 
 	/*

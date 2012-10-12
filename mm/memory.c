@@ -3443,24 +3443,24 @@ static bool pte_prot_none(struct vm_area_struct *vma, pte_t pte)
 }
 
 #ifdef CONFIG_NUMA
+
+
 static void do_prot_none_numa(struct mm_struct *mm, struct vm_area_struct *vma,
 			      unsigned long address, struct page *page)
 {
-	int node, ret;
+	int node, page_nid = page_to_nid(page);
+
+	task_numa_placement();
 
 	/*
 	 * For NUMA systems we use the special PROT_NONE maps to drive
 	 * lazy page migration, see MPOL_MF_LAZY and related.
 	 */
-	node = mpol_misplaced(page, vma, address, mm_numa_big(mm));
-	if (node != -1) {
-		ret = migrate_misplaced_page(mm, page, node);
-		if (!ret)
-			mm_inc_numa_migrate(mm, true);
-		else if (ret == -ENOMEM || ret == -EBUSY)
-			mm_inc_numa_migrate(mm, false);
-	} else
-		mm_inc_numa_migrate(mm, true);
+	node = mpol_misplaced(page, vma, address);
+	if (node != -1 && !migrate_misplaced_page(mm, page, node))
+		page_nid = node;
+
+	task_numa_fault(page_nid);
 }
 #else
 static void do_prot_none_numa(struct mm_struct *mm, struct vm_area_struct *vma,
