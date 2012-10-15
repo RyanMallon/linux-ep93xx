@@ -1,0 +1,29 @@
+Importing i2c based on 12250d843e8489ee00b5b7726da855e51694e792
+Unchanged quilt series i2c
+Importing jdelvare-hwmon based on 12250d843e8489ee00b5b7726da855e51694e792
+Unchanged quilt series jdelvare-hwmon
+Importing device-mapper based on v3.6-10596-g4f1cd91
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 4f1cd91497774488ed16119ec3f54b3daf1561de
+HEAD is now at 4f1cd91 Merge branch 'v4l_for_linus' of git://git.kernel.org/pub/scm/linux/kernel/git/mchehab/linux-media
+$ git am ../quilt/device-mapper/dm-mpath-fix-check-for-null-mpio-in-end_io-fn.patch
+Applying: The mpio dereference should be moved below the BUG_ON NULL test
+$ git am ../quilt/device-mapper/dm-bufio-use-list_move.patch
+Applying: Use list_move() instead of list_del() + list_add().
+$ git am ../quilt/device-mapper/dm-use-ACCESS_ONCE-for-sysfs-values.patch
+Applying: Use the ACCESS_ONCE macro in dm-bufio and dm-verity where a variable
+$ git am ../quilt/device-mapper/dm-persistent-data-convert-to-use-le32_add_cpu.patch
+Applying: Convert cpu_to_le32(le32_to_cpu(E1) + E2) to use le32_add_cpu().
+$ git am ../quilt/device-mapper/dm-thin-support-discard-with-non-power-of-two-block-size.patch
+Applying: Support discards when the pool's block size is not a power of 2.
+$ git am ../quilt/device-mapper/dm-thin-prepare-to-separate-bio_prison-code.patch
+Applying: The bio prison code will be useful to share with future DM targets.
+$ git am ../quilt/device-mapper/dm-thin-move-bio_prison-code-to-separate-module.patch
+Applying: The bio prison code will be useful to other future DM targets so
+$ git am ../quilt/device-mapper/dm-store-dm_target_io-in-bio-front_pad.patch
+Applying: Use the recently-added bio front_pad field to allocate struct dm_target_io.
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:quilt/device-mapper
+From ../quilt-tmp
+ + c9ccbf4...0cdaf29 master     -> quilt/device-mapper  (forced update)
