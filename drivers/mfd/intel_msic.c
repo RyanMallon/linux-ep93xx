@@ -413,12 +413,8 @@ static int intel_msic_probe(struct platform_device *pdev)
 	 * Map in the MSIC interrupt tree area in SRAM. This is exposed to
 	 * the clients via intel_msic_irq_read().
 	 */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "failed to get SRAM iomem resource\n");
-		return -ENODEV;
-	}
 
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	msic->irq_base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(msic->irq_base))
 		return PTR_ERR(msic->irq_base);
