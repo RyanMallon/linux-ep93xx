@@ -118,13 +118,8 @@ static int spear_thermal_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "memory resource missing\n");
-		return -ENODEV;
-	}
-
 	/* Enable thermal sensor */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	stdev->thermal_base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(stdev->thermal_base)) {
 		dev_err(&pdev->dev, "ioremap failed\n");
