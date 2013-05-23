@@ -2188,6 +2188,11 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		return -EINVAL;
 	}
 
+	if (fb == crtc->fb && crtc->x == x && crtc->y == y) {
+		DRM_DEBUG_KMS("skipping reset of current fb");
+		return 0;
+	}
+
 	mutex_lock(&dev->struct_mutex);
 	ret = intel_pin_and_fence_fb_obj(dev,
 					 to_intel_framebuffer(fb)->obj,
