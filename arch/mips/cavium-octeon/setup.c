@@ -457,6 +457,10 @@ static void octeon_halt(void)
 	}
 
 	octeon_kill_core(NULL);
+
+	/* We stop here */
+	while (1)
+		;
 }
 
 /**
