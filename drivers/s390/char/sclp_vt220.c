@@ -803,7 +803,7 @@ sclp_vt220_con_init(void)
 
 	if (!CONSOLE_IS_SCLP)
 		return 0;
-	rc = __sclp_vt220_init(MAX_CONSOLE_PAGES);
+	rc = __sclp_vt220_init(sclp_console_pages);
 	if (rc)
 		return rc;
 	/* Attach linux console */

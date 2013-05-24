@@ -50,6 +50,21 @@ static char sclp_init_sccb[PAGE_SIZE] __attribute__((__aligned__(PAGE_SIZE)));
 /* Suspend request */
 static DECLARE_COMPLETION(sclp_request_queue_flushed);
 
+/* Number of console pages to allocate, used by sclp_con.c and sclp_vt220.c */
+int sclp_console_pages = SCLP_CONSOLE_PAGES;
+
+static int __init sclp_setup_console_pages(char *str)
+{
+	int pages;
+
+	pages = simple_strtoul(str, &str, 0);
+	if (pages >= 6)
+		sclp_console_pages = pages;
+	return 1;
+}
+
+__setup("sclp_console_pages=", sclp_setup_console_pages);
+
 static void sclp_suspend_req_cb(struct sclp_req *req, void *data)
 {
 	complete(&sclp_request_queue_flushed);
