@@ -297,7 +297,7 @@ sclp_console_init(void)
 		return rc;
 	/* Allocate pages for output buffering */
 	INIT_LIST_HEAD(&sclp_con_pages);
-	for (i = 0; i < MAX_CONSOLE_PAGES; i++) {
+	for (i = 0; i < sclp_console_pages; i++) {
 		page = (void *) get_zeroed_page(GFP_KERNEL | GFP_DMA);
 		list_add_tail(page, &sclp_con_pages);
 	}
