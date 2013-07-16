@@ -977,8 +977,8 @@ static unsigned long __ext4_es_shrink(struct ext4_sb_info *sbi, int nr_to_scan,
 	return nr_shrunk;
 }
 
-static unsigned long ext4_es_shrink(struct shrinker *shrink,
-				    struct shrink_control *sc)
+static unsigned long ext4_es_scan(struct shrinker *shrink,
+				  struct shrink_control *sc)
 {
 	struct ext4_sb_info *sbi = container_of(shrink,
 					struct ext4_sb_info, s_es_shrinker);
@@ -987,7 +987,7 @@ static unsigned long ext4_es_shrink(struct shrinker *shrink,
 
 	nr_shrunk = __ext4_es_shrink(sbi, nr_to_scan, NULL);
 
-	trace_ext4_es_shrink_exit(sbi->s_sb, nr_shrunk, ret);
+	trace_ext4_es_shrink_exit(sbi->s_sb, nr_shrunk);
 	return nr_shrunk;
 }
 
