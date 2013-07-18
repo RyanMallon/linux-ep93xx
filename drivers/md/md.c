@@ -602,9 +602,9 @@ static struct mddev * mddev_find(dev_t unit)
 	goto retry;
 }
 
-static inline int mddev_lock(struct mddev * mddev)
+int md_queue_misc_work(struct work_struct *work)
 {
-	return mutex_lock_interruptible(&mddev->reconfig_mutex);
+	return queue_work(md_misc_wq, work);
 }
 
 static inline int mddev_is_locked(struct mddev *mddev)
@@ -619,7 +619,7 @@ static inline int mddev_trylock(struct mddev * mddev)
 
 static struct attribute_group md_redundancy_group;
 
-static void mddev_unlock(struct mddev * mddev)
+void mddev_unlock(struct mddev * mddev)
 {
 	if (mddev->to_remove) {
 		/* These cannot be removed under reconfig_mutex as
@@ -5628,10 +5628,7 @@ static int get_bitmap_file(struct mddev * mddev, void __user * arg)
 	char *ptr, *buf = NULL;
 	int err = -ENOMEM;
 
-	if (md_allow_write(mddev))
-		file = kmalloc(sizeof(*file), GFP_NOIO);
-	else
-		file = kmalloc(sizeof(*file), GFP_KERNEL);
+	file = kmalloc(sizeof(*file), GFP_NOIO);
 
 	if (!file)
 		goto out;
@@ -7716,20 +7713,6 @@ static int remove_and_add_spares(struct mddev *mddev,
 			continue;
 
 		rdev->recovery_offset = 0;
-		if (rdev->saved_raid_disk >= 0 && mddev->in_sync) {
-			spin_lock_irq(&mddev->write_lock);
-			if (mddev->in_sync)
-				/* OK, this device, which is in_sync,
-				 * will definitely be noticed before
-				 * the next write, so recovery isn't
-				 * needed.
-				 */
-				rdev->recovery_offset = mddev->recovery_cp;
-			spin_unlock_irq(&mddev->write_lock);
-		}
-		if (mddev->ro && rdev->recovery_offset != MaxSector)
-			/* not safe to add this disk now */
-			continue;
 		if (mddev->pers->
 		    hot_add_disk(mddev, rdev) == 0) {
 			if (sysfs_link_rdev(mddev, rdev))
@@ -8695,6 +8678,8 @@ EXPORT_SYMBOL(md_unregister_thread);
 EXPORT_SYMBOL(md_wakeup_thread);
 EXPORT_SYMBOL(md_check_recovery);
 EXPORT_SYMBOL(md_reap_sync_thread);
+EXPORT_SYMBOL(mddev_unlock);
+EXPORT_SYMBOL(md_queue_misc_work);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MD RAID framework");
 MODULE_ALIAS("md");
